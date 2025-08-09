@@ -5,10 +5,12 @@ from agents.base_agent import BaseAgent
 
 
 class RouterAgent(BaseAgent):
-    """Router agent that detects git commands and routes them to git agent."""
+    """Router agent that detects git commands and file operations and routes them to appropriate agents."""
     
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         super().__init__("router")
+        self.debug = debug
+        
         # Git command patterns to detect - both with and without "git" prefix
         self.git_patterns = [
             r'^git\s+',  # Starts with "git "
@@ -53,12 +55,43 @@ class RouterAgent(BaseAgent):
         ]
         self.git_command = re.compile('|'.join(self.git_patterns), re.IGNORECASE)
         
+        # File operation patterns to detect
+        self.file_patterns = [
+            r'^move\s+',     # move files
+            r'^copy\s+',     # copy files
+            r'^delete\s+',   # delete files
+            r'^remove\s+',   # remove files
+            r'^mkdir\s+',    # create directory
+            r'^list\s+',     # list files
+            r'^find\s+',     # find files
+            r'^rename\s+',   # rename files
+            # Natural language patterns
+            r'move\s+.*?\s+to\s+',      # move X to Y
+            r'copy\s+.*?\s+to\s+',      # copy X to Y
+            r'delete\s+.*',             # delete X
+            r'remove\s+.*',             # remove X
+            r'create\s+.*?folder',      # create folder
+            r'create\s+.*?directory',   # create directory
+            r'list\s+.*?files',         # list files
+            r'list\s+.*?contents',      # list contents
+            r'find\s+.*?files',         # find files
+            r'rename\s+.*?\s+to\s+',    # rename X to Y
+        ]
+        self.file_command = re.compile('|'.join(self.file_patterns), re.IGNORECASE)
+        
         # Additional keywords that might indicate git operations
         self.git_keywords = [
             'commit', 'push', 'pull', 'status', 'add', 'branch', 'checkout',
             'merge', 'log', 'diff', 'stash', 'reset', 'clone', 'init',
             'remote', 'fetch', 'tag', 'rebase', 'cherry-pick', 'repository',
             'repo', 'version control', 'git'
+        ]
+        
+        # Additional keywords that might indicate file operations
+        self.file_keywords = [
+            'move', 'copy', 'delete', 'remove', 'create', 'list', 'find', 
+            'rename', 'folder', 'directory', 'file', 'files', 'backup',
+            'transfer', 'duplicate', 'organize', 'sort'
         ]
         
         # Compound command patterns
@@ -70,49 +103,83 @@ class RouterAgent(BaseAgent):
             r'add\s+commit\s+push',
             r'add\s+commit\s*&\s*push',
         ]
+        
+    
+    def _debug_print(self, message: str):
+        """Print debug message only if debug mode is enabled."""
+        if self.debug:
+            print(f"[DEBUG] Router: {message}")
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
-        """Check if the input contains a git command."""
+        """Check if the input contains a git command or file operation."""
         messages = state.get("messages", [])
         if not messages:
+            self._debug_print("No messages in state")
             return False
         
         # Get the latest user message
         latest_message = messages[-1]
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content.lower()
+            self._debug_print(f"Checking content: {content}")
+            
             # Check for exact git command patterns
             if self.git_command.search(content):
+                self._debug_print(f"Found git command pattern in: {content}")
+                return True
+            
+            # Check for exact file operation patterns
+            if self.file_command.search(content):
+                self._debug_print(f"Found file operation pattern in: {content}")
                 return True
             
             # Check for compound commands
             for pattern in self.compound_patterns:
                 if re.search(pattern, content):
+                    self._debug_print(f"Found compound command pattern '{pattern}' in: {content}")
                     return True
             
             # Check for git-related keywords
             for keyword in self.git_keywords:
                 if keyword in content:
+                    self._debug_print(f"Found git keyword '{keyword}' in: {content}")
                     return True
+            
+            # Check for file-related keywords
+            for keyword in self.file_keywords:
+                if keyword in content:
+                    self._debug_print(f"Found file keyword '{keyword}' in: {content}")
+                    return True
+            
+            self._debug_print(f"No git or file patterns or keywords found in: {content}")
         
         return False
     
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Route git commands to git agent."""
+        """Route git commands and file operations to appropriate agents."""
         messages = state.get("messages", [])
         latest_message = messages[-1]
         
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
+            self._debug_print(f"Processing command: {content}")
             
             # Check if this is a git command
             if self._is_git_command(content):
+                self._debug_print(f"🔀 Routing to GIT_AGENT: {content}")
                 # Route to git agent
                 return self._route_to_git_agent(state, content)
+            # Check if this is a file operation
+            elif self._is_file_operation(content):
+                self._debug_print(f"🔀 Routing to FILE_AGENT: {content}")
+                # Route to file agent
+                return self._route_to_file_agent(state, content)
             else:
+                self._debug_print(f"🔀 Routing to REGULAR_COMMAND_HANDLER: {content}")
                 # Handle as regular command
                 return self._handle_regular_command(state, content)
         
+        self._debug_print("No HumanMessage found, returning current state")
         return state
     
     def _is_git_command(self, content: str) -> bool:
@@ -121,28 +188,52 @@ class RouterAgent(BaseAgent):
         
         # Check for exact git command patterns
         if self.git_command.search(content_lower):
+            self._debug_print(f"Found exact git command pattern in: {content}")
             return True
         
         # Check for compound commands
         for pattern in self.compound_patterns:
             if re.search(pattern, content_lower):
+                self._debug_print(f"Found compound command pattern '{pattern}' in: {content}")
                 return True
         
         # Check for git-related keywords
         for keyword in self.git_keywords:
             if keyword in content_lower:
+                self._debug_print(f"Found git keyword '{keyword}' in: {content}")
                 return True
         
+        self._debug_print(f"No git patterns found in: {content}")
+        return False
+    
+    def _is_file_operation(self, content: str) -> bool:
+        """Check if the content is a file operation."""
+        content_lower = content.lower()
+        
+        # Check for exact file operation patterns
+        if self.file_command.search(content_lower):
+            self._debug_print(f"Found exact file operation pattern in: {content}")
+            return True
+        
+        # Check for file-related keywords
+        for keyword in self.file_keywords:
+            if keyword in content_lower:
+                self._debug_print(f"Found file keyword '{keyword}' in: {content}")
+                return True
+        
+        self._debug_print(f"No file operation patterns found in: {content}")
         return False
     
     def _route_to_git_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
         """Route the command to the git agent."""
+        self._debug_print(f"Routing to git agent: {command}")
         # Add a message indicating routing to git agent
         messages = state.get("messages", [])
         messages.append(AIMessage(content=f"Routing git command: {command}"))
         
         # Normalize the command to include "git" prefix if not present
         normalized_command = self._normalize_git_command(command)
+        self._debug_print(f"Normalized command: {command} -> {normalized_command}")
         
         return {
             **state,
@@ -151,12 +242,26 @@ class RouterAgent(BaseAgent):
             "last_command": normalized_command
         }
     
+    def _route_to_file_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
+        """Route the command to the file agent."""
+        messages = state.get("messages", [])
+        messages.append(AIMessage(content=f"Routing file operation: {command}"))
+        
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": "file_agent",
+            "last_command": command
+        }
+    
     def _normalize_git_command(self, command: str) -> str:
         """Normalize git command to include 'git' prefix if not present."""
         command_lower = command.lower().strip()
+        self._debug_print(f"Normalizing command: {command}")
         
         # If it already starts with "git", return as is
         if command_lower.startswith("git"):
+            self._debug_print(f"Command already has git prefix: {command}")
             return command
         
         # Check for compound commands first
@@ -171,6 +276,7 @@ class RouterAgent(BaseAgent):
         
         for pattern, replacement in compound_commands.items():
             if re.search(pattern, command_lower):
+                self._debug_print(f"Found compound command pattern '{pattern}', replacing with: {replacement}")
                 return replacement
         
         # Map common git commands to their full form
@@ -201,17 +307,24 @@ class RouterAgent(BaseAgent):
             if command_lower.startswith(cmd):
                 # Handle commands with arguments
                 if command_lower == cmd:
-                    return f"git {default}"
+                    result = f"git {default}"
+                    self._debug_print(f"Found git command '{cmd}', using default: {result}")
+                    return result
                 else:
                     # Extract the command and its arguments
                     args = command[len(cmd):].strip()
-                    return f"git {cmd} {args}"
+                    result = f"git {cmd} {args}"
+                    self._debug_print(f"Found git command '{cmd}' with args '{args}': {result}")
+                    return result
         
         # If not recognized, just add "git" prefix
-        return f"git {command}"
+        result = f"git {command}"
+        self._debug_print(f"Command not recognized, adding git prefix: {result}")
+        return result
     
     def _handle_regular_command(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Handle non-git commands."""
+        """Handle non-git and non-file commands."""
+        self._debug_print(f"Handling regular command: {command}")
         messages = state.get("messages", [])
         messages.append(AIMessage(content=f"Routing regular command: {command}"))
         

@@ -15,97 +15,106 @@ except ImportError:
 class GitAgent(BaseAgent):
     """Git agent that handles git-specific commands and operations with LLM interface."""
     
-    def __init__(self, llm_model: str = "gpt-3.5-turbo"):
+    def __init__(self, llm_model: str = "gpt-3.5-turbo", debug: bool = False):
         super().__init__("git_agent")
+        self.debug = debug
         
         # Initialize LLM if available and API key is set
         self.llm = None
         if LLM_AVAILABLE and os.getenv("OPENAI_API_KEY"):
             try:
                 self.llm = ChatOpenAI(model=llm_model, temperature=0)
+                self._debug_print(f"✅ LLM initialized with model: {llm_model}")
             except Exception as e:
-                print(f"Warning: LLM initialization failed: {e}")
+                self._debug_print(f"⚠️ LLM initialization failed: {e}")
+        else:
+            self._debug_print("⚠️ LLM not available - using fallback parsing")
         
         # System prompt for LLM
-        self.system_prompt = """You are a Git expert assistant. Your job is to convert natural language requests into valid Git commands.
-
-Available Git commands and their common usage:
-- `git status` - Check the current status of the repository
-- `git add <files>` - Add files to staging area (use . for all files)
-- `git commit -m "<message>"` - Commit staged changes with a message
-- `git push` - Push commits to remote repository
-- `git pull` - Pull changes from remote repository
-- `git log` - Show commit history
-- `git branch` - List branches (use -a for all branches)
-- `git checkout <branch>` - Switch to a branch
-- `git merge <branch>` - Merge a branch into current branch
-- `git diff` - Show differences
-- `git stash` - Stash changes
-- `git reset` - Reset changes
-- `git clone <url>` - Clone a repository
-- `git init` - Initialize a new repository
-- `git remote` - Manage remote repositories
-- `git fetch` - Fetch from remote repository
-- `git tag` - Manage tags
-- `git rebase` - Rebase commits
-- `git cherry-pick` - Apply specific commits
-
-Rules:
-1. Always return only the Git command, nothing else
-2. Use appropriate flags and options based on the request
-3. For commit messages, use descriptive but concise messages
-4. If multiple commands are needed, separate them with "&&"
-5. If the request is unclear, use the most common interpretation
-6. For file operations, use "." if no specific files are mentioned
+        self.system_prompt = """Convert natural language to Git commands. Return only the command, nothing else.
 
 Examples:
 - "check status" → "git status"
 - "add all files" → "git add ."
-- "commit with message update readme" → "git commit -m \"update readme\""
+- "commit with message update" → "git commit -m \"update\""
 - "push to remote" → "git push"
-- "create and switch to new branch feature" → "git checkout -b feature"
 - "commit and push" → "git add . && git commit -m \"Auto-commit\" && git push"
 
-Now convert the following natural language request to a Git command:"""
+Convert this request to a Git command:"""
+        
+        self._debug_print("🤖 GitAgent initialized successfully")
 
+    def _debug_print(self, message: str):
+        """Print debug message only if debug mode is enabled."""
+        if self.debug:
+            print(f"[DEBUG] GitAgent: {message}")
+    
     def should_handle(self, state: Dict[str, Any]) -> bool:
         """Check if this agent should handle the current input."""
         # This agent is called via MCP from the router
-        return state.get("routed_to") == "git_agent"
+        should_handle = state.get("routed_to") == "git_agent"
+        self._debug_print(f"should_handle: {should_handle} (routed_to: {state.get('routed_to')})")
+        return should_handle
     
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Process git commands with LLM support for natural language conversion."""
         command = state.get("last_command", "")
+        self._debug_print(f"Processing command: {command}")
+        
         if not command:
+            self._debug_print("No command provided, returning current state")
             return state
         
         try:
             # First, try to convert natural language to git command using LLM
+            self._debug_print("Converting natural language to git command...")
             converted_command = self._convert_natural_language_to_git(command)
+            self._debug_print(f"Converted command: {converted_command}")
             
             # Check if this is a compound command with &&
             if "&&" in converted_command:
+                self._debug_print("Detected compound command, processing...")
                 return self._process_compound_command(state, converted_command)
             
+            # Ask for confirmation before executing
+            self._debug_print("Requesting user confirmation...")
+            if not self._confirm_command_execution(converted_command):
+                self._debug_print("Command cancelled by user")
+                return self._add_cancelled_message(state, converted_command)
+            
             # Execute the git command directly
+            self._debug_print(f"Executing command: {converted_command}")
             result = self._execute_git_command(converted_command)
+            self._debug_print(f"Command execution result: {result[:100]}...")
             return self._add_success_message(state, f"Executed: {converted_command}\nResult: {result}")
                 
         except Exception as e:
+            self._debug_print(f"Error in process: {str(e)}")
             return self._add_error_message(state, str(e))
+    
+    def _confirm_command_execution(self, command: str) -> bool:
+        """Ask for user confirmation before executing a git command."""
+        try:
+            print("↵ to confirm, ctrl+c to skip")
+            print(f"> {command}", end="")
+            response = input().strip()
+            self._debug_print(f"User response: '{response}' (will proceed: True)")
+            return True  # Any input (including empty) means proceed
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Command cancelled by user")
+            self._debug_print("Command cancelled by keyboard interrupt")
+            return False
     
     def _convert_natural_language_to_git(self, natural_language: str) -> str:
         """Convert natural language to git command using LLM."""
         try:
-            # Check if it's already a git command
-            if self._is_already_git_command(natural_language):
-                return natural_language
-            
             # If LLM is not available, use fallback parsing
             if not self.llm:
+                self._debug_print("Using fallback parsing (LLM not available)")
                 return self._fallback_parse(natural_language)
             
             # Create messages for LLM
+            self._debug_print("Using LLM for natural language conversion")
             messages = [
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=natural_language)
@@ -116,46 +125,30 @@ Now convert the following natural language request to a Git command:"""
             
             # Extract the git command from the response
             git_command = response.content.strip()
+            self._debug_print(f"LLM response: {git_command}")
             
             # Clean up the response (remove quotes, extra spaces, etc.)
             git_command = re.sub(r'^["\']|["\']$', '', git_command)  # Remove surrounding quotes
             git_command = re.sub(r'\s+', ' ', git_command)  # Normalize spaces
+            self._debug_print(f"Cleaned command: {git_command}")
             
             return git_command
             
         except Exception as e:
             # If LLM fails, try to fall back to basic parsing
-            print(f"LLM conversion failed: {e}, using fallback parsing")
+            self._debug_print(f"LLM conversion failed: {e}, using fallback parsing")
             return self._fallback_parse(natural_language)
-    
-    def _is_already_git_command(self, command: str) -> bool:
-        """Check if the command is already a valid git command."""
-        command_lower = command.lower().strip()
-        
-        # Check if it starts with git
-        if command_lower.startswith("git "):
-            return True
-        
-        # Check if it's a known git command without prefix
-        git_commands = ["status", "add", "commit", "push", "pull", "log", "branch", 
-                       "checkout", "merge", "diff", "stash", "reset", "clone", "init", 
-                       "remote", "fetch", "tag", "rebase", "cherry-pick"]
-        
-        for git_cmd in git_commands:
-            if command_lower.startswith(git_cmd):
-                return True
-        
-        return False
     
     def _fallback_parse(self, natural_language: str) -> str:
         """Fallback parsing for natural language when LLM is not available."""
+        self._debug_print(f"Fallback parsing: {natural_language}")
         text = natural_language.lower()
         
         # Basic keyword-based conversion
         if "status" in text:
-            return "git status"
+            result = "git status"
         elif "add" in text or "stage" in text:
-            return "git add ."
+            result = "git add ."
         elif "commit" in text:
             # Try to extract commit message
             if "message" in text:
@@ -163,71 +156,87 @@ Now convert the following natural language request to a Git command:"""
                 message_match = re.search(r'(?:message|with message)\s+(.+)', text)
                 if message_match:
                     message = message_match.group(1).strip()
-                    return f'git commit -m "{message}"'
+                    result = f'git commit -m "{message}"'
                 else:
-                    return 'git commit -m "Auto-commit"'
+                    result = 'git commit -m "Auto-commit"'
             else:
-                return 'git commit -m "Auto-commit"'
+                result = 'git commit -m "Auto-commit"'
         elif "push" in text:
-            return "git push"
+            result = "git push"
         elif "pull" in text:
-            return "git pull"
+            result = "git pull"
         elif "log" in text or "history" in text:
-            return "git log"
+            result = "git log"
         elif "branch" in text:
-            return "git branch"
+            result = "git branch"
         elif "checkout" in text or "switch" in text:
             # Try to extract branch name
             branch_match = re.search(r'(?:to|branch|checkout)\s+(\w+)', text)
             if branch_match:
                 branch = branch_match.group(1)
-                return f"git checkout {branch}"
+                result = f"git checkout {branch}"
             else:
-                return "git checkout"
+                result = "git checkout"
         elif "merge" in text:
-            return "git merge"
+            result = "git merge"
         elif "diff" in text:
-            return "git diff"
+            result = "git diff"
         else:
             # If we can't parse it, just add git prefix
-            return f"git {natural_language}"
+            result = f"git {natural_language}"
+        
+        self._debug_print(f"Fallback parse result: {result}")
+        return result
     
     def _process_compound_command(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
         """Process compound commands with && operators."""
+        self._debug_print(f"Processing compound command: {command}")
         # Split the command by &&
         commands = [cmd.strip() for cmd in command.split("&&")]
+        self._debug_print(f"Split into {len(commands)} commands: {commands}")
+        
         results = []
         
-        for cmd in commands:
+        for i, cmd in enumerate(commands, 1):
             if not cmd:
+                self._debug_print(f"Skipping empty command at position {i}")
                 continue
             
             try:
+                self._debug_print(f"Executing command {i}/{len(commands)}: {cmd}")
                 # Execute the git command directly
                 result = self._execute_git_command(cmd)
                 results.append(f"{cmd}: {result}")
+                self._debug_print(f"Command {i} result: {result[:100]}...")
                     
             except Exception as e:
-                results.append(f"{cmd}: Error - {str(e)}")
+                error_msg = f"{cmd}: Error - {str(e)}"
+                results.append(error_msg)
+                self._debug_print(f"Command {i} failed: {str(e)}")
         
         # Combine all results
         combined_result = " | ".join(results)
+        self._debug_print(f"Combined result: {combined_result[:200]}...")
         return self._add_success_message(state, combined_result)
     
     def _execute_git_command(self, command: str) -> str:
         """Execute a git command directly."""
+        self._debug_print(f"Executing git command: {command}")
         try:
             # Parse the command to extract git and its arguments
             if command.lower().startswith("git "):
                 # Remove "git" prefix and split arguments
                 args = command[4:].split()
                 git_args = ["git"] + args
+                self._debug_print(f"Parsed git arguments: {git_args}")
             else:
                 # If no "git" prefix, add it
                 args = command.split()
                 git_args = ["git"] + args
+                self._debug_print(f"Added git prefix, arguments: {git_args}")
             
             # Execute the command
+            self._debug_print(f"Running subprocess: {git_args}")
             result = subprocess.run(
                 git_args,
                 capture_output=True,
@@ -235,17 +244,24 @@ Now convert the following natural language request to a Git command:"""
                 cwd="."
             )
             
+            self._debug_print(f"Subprocess return code: {result.returncode}")
             if result.returncode == 0:
-                return result.stdout.strip() if result.stdout.strip() else "Command executed successfully"
+                output = result.stdout.strip() if result.stdout.strip() else "Command executed successfully"
+                self._debug_print(f"Command successful, output: {output[:100]}...")
+                return output
             else:
                 error_msg = result.stderr.strip() if result.stderr.strip() else "Unknown error"
+                self._debug_print(f"Command failed, error: {error_msg[:100]}...")
                 return f"Error: {error_msg}"
                 
         except Exception as e:
-            return f"Failed to execute git command: {str(e)}"
+            error_msg = f"Failed to execute git command: {str(e)}"
+            self._debug_print(f"Exception during execution: {str(e)}")
+            return error_msg
     
     def _add_success_message(self, state: Dict[str, Any], result: str) -> Dict[str, Any]:
         """Add a success message to the state."""
+        self._debug_print(f"Adding success message: {result[:100]}...")
         messages = state.get("messages", [])
         messages.append(AIMessage(content=f"Git command executed successfully: {result}"))
         
@@ -257,6 +273,7 @@ Now convert the following natural language request to a Git command:"""
     
     def _add_error_message(self, state: Dict[str, Any], error: str) -> Dict[str, Any]:
         """Add an error message to the state."""
+        self._debug_print(f"Adding error message: {error}")
         messages = state.get("messages", [])
         messages.append(AIMessage(content=f"Git command failed: {error}"))
         
@@ -264,4 +281,16 @@ Now convert the following natural language request to a Git command:"""
             **state,
             "messages": messages,
             "error": error
+        }
+
+    def _add_cancelled_message(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
+        """Add a cancelled message to the state."""
+        self._debug_print(f"Adding cancelled message for command: {command}")
+        messages = state.get("messages", [])
+        messages.append(AIMessage(content=f"Command cancelled by user: {command}"))
+        
+        return {
+            **state,
+            "messages": messages,
+            "cancelled": True
         }

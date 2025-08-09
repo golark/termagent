@@ -1,12 +1,13 @@
 # TermAgent Makefile
 
-.PHONY: help install run test clean
+.PHONY: help install run debug test clean
 
 # Default target
 help:
 	@echo "🤖 TermAgent - Available commands:"
 	@echo "  make install    - Install dependencies"
 	@echo "  make run        - Run the application"
+	@echo "  make debug      - Run the application in debug mode"
 	@echo "  make test       - Run tests"
 	@echo "  make clean      - Clean cache files"
 
@@ -17,6 +18,10 @@ install:
 # Run the application
 run:
 	uv run main.py
+
+# Run the application in debug mode
+debug:
+	uv run main.py --debug
 
 # Run tests
 test:

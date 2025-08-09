@@ -4,6 +4,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from agents.router_agent import RouterAgent
 from agents.git_agent import GitAgent
+from agents.file_agent import FileAgent
 
 
 class AgentState(TypedDict):
@@ -12,15 +13,17 @@ class AgentState(TypedDict):
     routed_to: str | None
     last_command: str | None
     git_result: str | None
+    file_result: str | None
     error: str | None
 
 
-def create_agent_graph() -> StateGraph:
-    """Create the main agent graph with router and git agent."""
+def create_agent_graph(debug: bool = False) -> StateGraph:
+    """Create the main agent graph with router, git agent, and file agent."""
     
     # Initialize agents
-    router_agent = RouterAgent()
-    git_agent = GitAgent()
+    router_agent = RouterAgent(debug=debug)
+    git_agent = GitAgent(debug=debug)
+    file_agent = FileAgent(debug=debug)
     
     # Create the state graph
     workflow = StateGraph(AgentState)
@@ -28,6 +31,7 @@ def create_agent_graph() -> StateGraph:
     # Add nodes
     workflow.add_node("router", router_agent.process)
     workflow.add_node("git_agent", git_agent.process)
+    workflow.add_node("file_agent", file_agent.process)
     workflow.add_node("handle_regular", handle_regular_command)
     
     # Add conditional edges from router
@@ -36,6 +40,7 @@ def create_agent_graph() -> StateGraph:
         route_decision,
         {
             "git_agent": "git_agent",
+            "file_agent": "file_agent",
             "handle_regular": "handle_regular",
             END: END
         }
@@ -43,6 +48,7 @@ def create_agent_graph() -> StateGraph:
     
     # Add edges to END
     workflow.add_edge("git_agent", END)
+    workflow.add_edge("file_agent", END)
     workflow.add_edge("handle_regular", END)
     
     # Set entry point
@@ -55,6 +61,8 @@ def route_decision(state: AgentState) -> str:
     """Decide which node to route to based on the state."""
     if state.get("routed_to") == "git_agent":
         return "git_agent"
+    elif state.get("routed_to") == "file_agent":
+        return "file_agent"
     elif state.get("routed_to") == "regular_command":
         return "handle_regular"
     else:
@@ -87,6 +95,7 @@ def process_command(command: str, graph) -> Dict[str, Any]:
         routed_to=None,
         last_command=None,
         git_result=None,
+        file_result=None,
         error=None
     )
     
