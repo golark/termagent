@@ -1,6 +1,6 @@
 # TermAgent Makefile
 
-.PHONY: help install run debug test clean
+.PHONY: help install run debug test clean oneshot
 
 # Default target
 help:
@@ -8,6 +8,7 @@ help:
 	@echo "  make install    - Install dependencies"
 	@echo "  make run        - Run the application"
 	@echo "  make debug      - Run the application in debug mode"
+	@echo "  make oneshot    - Run a single command and exit (usage: make oneshot CMD='git status')"
 	@echo "  make test       - Run tests"
 	@echo "  make clean      - Clean cache files"
 
@@ -22,6 +23,15 @@ run:
 # Run the application in debug mode
 debug:
 	uv run main.py --debug
+
+# Run a single command and exit
+oneshot:
+	@if [ -z "$(CMD)" ]; then \
+		echo "❌ Error: Please specify a command with CMD='your command'"; \
+		echo "Example: make oneshot CMD='git status'"; \
+		exit 1; \
+	fi
+	uv run main.py --oneshot "$(CMD)"
 
 # Run tests
 test:

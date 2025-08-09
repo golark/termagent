@@ -13,6 +13,7 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="TermAgent - LangGraph Agent System")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--oneshot", type=str, help="Execute a single command and exit")
     args = parser.parse_args()
     
     print("🤖 TermAgent - LangGraph Agent System")
@@ -32,6 +33,42 @@ def main():
     graph = create_agent_graph(debug=args.debug)
     print("✅ Agent system ready!")
     print()
+    
+    # Oneshot mode
+    if args.oneshot:
+        print(f"🎯 ONESHOT MODE: {args.oneshot}")
+        print("-" * 30)
+        
+        try:
+            # Process the command
+            print(f"\n🔄 Processing: {args.oneshot}")
+            result = process_command(args.oneshot, graph)
+            
+            # Display the result
+            messages = result.get("messages", [])
+            ai_messages = [msg for msg in messages if hasattr(msg, 'content') and 
+                          msg.__class__.__name__ == 'AIMessage']
+            
+            if ai_messages:
+                response = ai_messages[-1].content
+                print(response)
+            
+            # Show routing information
+            routed_to = result.get("routed_to")
+            if routed_to:
+                print(f"📍 Routed to: {routed_to}")
+            
+            print("-" * 30)
+            print("✅ Oneshot command completed. Exiting...")
+            return
+            
+        except Exception as e:
+            print(f"❌ Error: {str(e)}")
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+            print("-" * 30)
+            sys.exit(1)
     
     # Interactive mode
     print("Enter commands (or 'quit' to exit):")
