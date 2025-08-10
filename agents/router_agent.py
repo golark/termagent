@@ -64,6 +64,9 @@ class RouterAgent(BaseAgent):
             r'^list\s+',     # list files
             r'^find\s+',     # find files
             r'^rename\s+',   # rename files
+            r'^pwd$',        # show current directory
+            r'^ls$',         # list files
+            r'^dir$',        # list files
             # Natural language patterns
             r'move\s+.*?\s+to\s+',      # move X to Y
             r'copy\s+.*?\s+to\s+',      # copy X to Y
@@ -158,7 +161,6 @@ class RouterAgent(BaseAgent):
         
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
-            self._debug_print(f"Processing command: {content}")
             
             # Check if this is a git command
             if self._is_git_command(content):
@@ -199,7 +201,6 @@ class RouterAgent(BaseAgent):
                 self._debug_print(f"Found git keyword '{keyword}' in: {content}")
                 return True
         
-        self._debug_print(f"No git patterns found in: {content}")
         return False
     
     def _is_file_operation(self, content: str) -> bool:

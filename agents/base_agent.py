@@ -24,7 +24,8 @@ class BaseAgent:
     
     def _debug_print(self, message: str):
         if self.debug:
-            print(f"{self.name}: {message}")
+            # Pad the name to ensure | appears after 12 characters
+            print(f"{self.name:<12} | {message}")
     
     def _initialize_llm(self, llm_model: str = "gpt-3.5-turbo") -> bool:
         if LLM_AVAILABLE and os.environ.get("OPENAI_API_KEY"):

@@ -22,10 +22,10 @@ def main():
     print("=" * 40)
     print("This agent can:")
     print("  • Detect and route git commands to a specialized git agent")
+    print("  • Detect and route file operations to a specialized file agent")
     print("  • Handle regular commands")
     print("  • Use MCP for agent communication")
-    if args.debug:
-        print("  • Show detailed debug information")
+    print("  • Show detailed debug information")
     print()
     
     # Create the agent graph

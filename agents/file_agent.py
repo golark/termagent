@@ -3,6 +3,7 @@ import subprocess
 from typing import Dict, Any
 from langchain_core.messages import AIMessage, HumanMessage
 from agents.base_agent import BaseAgent
+import re
 
 try:
     from langchain_openai import ChatOpenAI
@@ -12,59 +13,134 @@ except ImportError:
 
 
 class FileAgent(BaseAgent):
-    """File agent that handles file operations like moving, copying, deleting files with LLM interface."""
+    """Agent for handling file operations using natural language."""
     
-    def __init__(self, llm_model: str = "gpt-3.5-turbo", debug: bool = False):
+    def __init__(self, debug: bool = False, llm_model: str = "gpt-3.5-turbo"):
         super().__init__("file_agent", debug)
-        
-        # Initialize LLM using base class method
         self._initialize_llm(llm_model)
         
-        # System prompt for LLM
-        self.system_prompt = """Convert natural language to valid shell commands. Return only the command, nothing else.
-
-File Operations Examples:
-- "move file.txt to folder/" → "mv file.txt folder/"
-- "copy data.csv to backup/" → "cp data.csv backup/"
-- "delete old.log" → "rm old.log"
-- "create folder logs" → "mkdir logs"
-- "list files in docs/" → "ls docs/"
-- "find *.txt files" → "find . -name '*.txt'"
-- "rename old.txt to new.txt" → "mv old.txt new.txt"
-- "create directory backup" → "mkdir backup"
-- "remove folder temp" → "rm -rf temp"
-- "copy directory source to dest" → "cp -r source dest"
-- "show contents of current directory" → "ls -la"
-- "find files containing pattern" → "find . -name '*pattern*'"
-- "list all files" → "ls -la"
-- "show hidden files" → "ls -la"
-- "create nested directories" → "mkdir -p parent/child"
-- "remove file and ignore errors" → "rm -f file.txt"
-- "copy with verbose output" → "cp -v source dest"
-- "move with backup" → "mv -b file.txt file.txt~"
-
-Common shell commands:
-- mv (move/rename), cp (copy), rm (remove/delete), mkdir (create directory)
-- ls (list), find (search), touch (create empty file), chmod (change permissions)
-- Use -r for recursive operations on directories
-- Use -f for force operations (ignore errors)
-- Use -v for verbose output
-- Use -p for creating parent directories
-
-Return only the shell command, no explanations, quotes, or additional text:"""
+        # Common file operation patterns and their direct commands
+        self.common_patterns = {
+            r'^list\s+files?$': 'ls',
+            r'^list\s+contents?$': 'ls',
+            r'^show\s+files?$': 'ls',
+            r'^show\s+contents?$': 'ls',
+            r'^what\s+files?$': 'ls',
+            r'^what\s+contents?$': 'ls',
+            r'^dir$': 'ls',
+            r'^ls$': 'ls',
+            r'^pwd$': 'pwd',
+            r'^current\s+directory$': 'pwd',
+            r'^show\s+current\s+directory$': 'pwd',
+            r'^where\s+am\s+i$': 'pwd',
+            r'^working\s+directory$': 'pwd',
+            r'^create\s+file\s+(.+)$': 'touch',
+            r'^make\s+file\s+(.+)$': 'touch',
+            r'^new\s+file\s+(.+)$': 'touch',
+            r'^create\s+directory\s+(.+)$': 'mkdir',
+            r'^make\s+directory\s+(.+)$': 'mkdir',
+            r'^new\s+directory\s+(.+)$': 'mkdir',
+            r'^mkdir\s+(.+)$': 'mkdir',
+            r'^remove\s+file\s+(.+)$': 'rm',
+            r'^delete\s+file\s+(.+)$': 'rm',
+            r'^rm\s+(.+)$': 'rm',
+            r'^remove\s+directory\s+(.+)$': 'rmdir',
+            r'^delete\s+directory\s+(.+)$': 'rmdir',
+            r'^rmdir\s+(.+)$': 'rmdir',
+            r'^copy\s+(.+)\s+to\s+(.+)$': 'cp',
+            r'^cp\s+(.+)\s+(.+)$': 'cp',
+            r'^move\s+(.+)\s+to\s+(.+)$': 'mv',
+            r'^mv\s+(.+)\s+(.+)$': 'mv',
+            r'^rename\s+(.+)\s+to\s+(.+)$': 'mv',
+            r'^find\s+(.+)$': 'find',
+            r'^search\s+for\s+(.+)$': 'find',
+            r'^grep\s+(.+)$': 'grep',
+            r'^search\s+in\s+(.+)$': 'grep',
+            # Common variations
+            r'^show\s+python\s+files$': 'find . -name "*.py"',
+            r'^find\s+python\s+files$': 'find . -name "*.py"',
+            r'^list\s+python\s+files$': 'find . -name "*.py"',
+            r'^show\s+text\s+files$': 'find . -name "*.txt"',
+            r'^find\s+text\s+files$': 'find . -name "*.txt"',
+            r'^list\s+text\s+files$': 'find . -name "*.txt"',
+            r'^show\s+hidden\s+files$': 'ls -la',
+            r'^list\s+hidden\s+files$': 'ls -la',
+            r'^show\s+all\s+files$': 'ls -la',
+            r'^list\s+all\s+files$': 'ls -la',
+        }
         
-        self._debug_print("🤖 FileAgent initialized successfully")
-
-
+        # Compile patterns for efficient matching
+        self.compiled_patterns = {re.compile(pattern, re.IGNORECASE): command 
+                                 for pattern, command in self.common_patterns.items()}
+        
+        # System prompt for LLM fallback
+        self.system_prompt = """You are a file operation assistant. Convert natural language file operations to shell commands.
+        
+        Examples:
+        - "list files" → "ls"
+        - "create a new file called test.txt" → "touch test.txt"
+        - "move file.txt to backup/" → "mv file.txt backup/"
+        - "copy source.txt to destination.txt" → "cp source.txt destination.txt"
+        - "delete old_file.txt" → "rm old_file.txt"
+        - "find all .txt files" → "find . -name '*.txt'"
+        - "search for 'hello' in files" → "grep -r 'hello' ."
+        
+        Return only the shell command, nothing else."""
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
         """Check if this agent should handle the current input."""
-        # This agent is called via MCP from the router
         should_handle = state.get("routed_to") == "file_agent"
         return should_handle
     
+    def _parse_common_pattern(self, natural_language: str) -> tuple[str, list]:
+        """Parse natural language input using common patterns and return command and arguments."""
+        for pattern, command in self.compiled_patterns.items():
+            match = pattern.match(natural_language.strip())
+            if match:
+                args = [arg.strip() for arg in match.groups() if arg and arg.strip()]
+                self._debug_print(f"Common pattern matched: {command} with args: {args}")
+                
+                # For complex queries, prefer LLM over simple pattern matching
+                if command == 'find' and len(args) > 0 and len(args[0]) > 20:
+                    self._debug_print(f"Complex find query detected, using LLM instead")
+                    return "", []
+                if command == 'grep' and len(args) > 0 and len(args[0]) > 20:
+                    self._debug_print(f"Complex grep query detected, using LLM instead")
+                    return "", []
+                
+                return command, args
+        
+        self._debug_print(f"No common pattern matched: {natural_language}")
+        return "", []
+    
+    def _build_command(self, command: str, args: list) -> str:
+        """Build the actual shell command from parsed components."""
+        if not command:
+            return ""
+        
+        if command in ['ls', 'pwd']:
+            return command
+        elif command == 'touch' and args:
+            return f"touch {args[0]}"
+        elif command == 'mkdir' and args:
+            return f"mkdir -p {args[0]}"
+        elif command == 'rm' and args:
+            return f"rm {args[0]}"
+        elif command == 'rmdir' and args:
+            return f"rmdir {args[0]}"
+        elif command == 'cp' and len(args) >= 2:
+            return f"cp {args[0]} {args[1]}"
+        elif command == 'mv' and len(args) >= 2:
+            return f"mv {args[0]} {args[1]}"
+        elif command == 'find' and args:
+            return f"find . -name '{args[0]}'"
+        elif command == 'grep' and args:
+            return f"grep -r '{args[0]}' ."
+        else:
+            return command
+    
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process file operations with LLM support for natural language conversion."""
+        """Process file operations using pattern matching first, then LLM fallback."""
         command = state.get("last_command", "")
         self._debug_print(f"Processing command: {command}")
         
@@ -72,26 +148,32 @@ Return only the shell command, no explanations, quotes, or additional text:"""
             return state
         
         try:
-            # Convert natural language to file operation using LLM
-            converted_operation = self._convert_natural_language_to_operation(command)
-            if self.debug:
-                self._debug_print(f"Converted operation: {converted_operation}")
+            # First try to match common patterns
+            parsed_command, args = self._parse_common_pattern(command)
             
-            # Ask for confirmation before executing
-            if not self._confirm_operation_execution(converted_operation, "operation"):
-                return self._add_message(state, "Operation cancelled", "cancelled")
+            if parsed_command:
+                # Use common pattern match
+                shell_command = self._build_command(parsed_command, args)
+            else:
+                # Fallback to LLM conversion
+                self._debug_print("No common pattern matched, using LLM conversion")
+                converted_operation = self._convert_natural_language(command, self.system_prompt)
+                shell_command = converted_operation
             
-            # Execute the file operation
-            result = self._execute_shell_command(converted_operation)
-            return self._add_message(state, f"Executed: {converted_operation}\nResult: {result}", "success")
-                
+           
+            if not self._confirm_operation_execution(shell_command, "operation"):
+                return self._add_message(state, f"Operation cancelled: {shell_command}", "cancelled")
+            
+            result = self._execute_shell_command(shell_command)
+            return self._add_message(state, f"✅ File operation executed successfully: {result}", "success", file_result=result)
+            
         except Exception as e:
             if self.debug:
                 self._debug_print(f"Error in process: {str(e)}")
-            return self._add_message(state, str(e), "error")
+            return self._add_message(state, f"❌ File operation failed: {str(e)}", "error")
     
 
-       
+    
     def _convert_natural_language_to_operation(self, natural_language: str) -> str:
         """Convert natural language to file operation using LLM."""
         return self._convert_natural_language(natural_language, self.system_prompt)
@@ -112,7 +194,6 @@ Return only the shell command, no explanations, quotes, or additional text:"""
                 text=True,
                 cwd="."
             )
-
             
             if result.returncode == 0:
                 output = result.stdout.strip() if result.stdout.strip() else "Command executed successfully"
