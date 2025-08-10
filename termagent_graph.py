@@ -17,13 +17,13 @@ class AgentState(TypedDict):
     error: str | None
 
 
-def create_agent_graph(debug: bool = False) -> StateGraph:
+def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
     """Create the main agent graph with router, git agent, and file agent."""
     
     # Initialize agents
-    router_agent = RouterAgent(debug=debug)
-    git_agent = GitAgent(debug=debug)
-    file_agent = FileAgent(debug=debug)
+    router_agent = RouterAgent(debug=debug, no_confirm=no_confirm)
+    git_agent = GitAgent(debug=debug, no_confirm=no_confirm)
+    file_agent = FileAgent(debug=debug, no_confirm=no_confirm)
     
     # Create the state graph
     workflow = StateGraph(AgentState)

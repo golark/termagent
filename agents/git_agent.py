@@ -13,21 +13,33 @@ except ImportError:
 class GitAgent(BaseAgent):
     """Git agent that handles git-specific commands and operations with LLM interface."""
     
-    def __init__(self, llm_model: str = "gpt-3.5-turbo", debug: bool = False):
-        super().__init__("git_agent", debug)
+    def __init__(self, llm_model: str = "gpt-3.5-turbo", debug: bool = False, no_confirm: bool = False):
+        super().__init__("git_agent", debug, no_confirm)
         
         # Initialize LLM using base class method
         self._initialize_llm(llm_model)
         
         # System prompt for LLM
-        self.system_prompt = """Convert natural language to Git commands. Return only the command, nothing else.
+        self.system_prompt = """Convert natural language to zsh-compatible Git commands. Return only the command, nothing else.
+
+IMPORTANT: Commands must work in zsh shell. Use zsh-compatible syntax.
 
 Examples:
 - "check status" → "git status"
 - "add all files" → "git add ."
-- "commit with message update" → "git commit -m \"update\""
+- "commit with message update" → "git commit -m 'update'"
 - "push to remote" → "git push"
-- "commit and push" → "git add . && git commit -m \"Auto-commit\" && git push"
+- "commit and push" → "git add . && git commit -m 'Auto-commit' && git push"
+- "show last 5 commits" → "git log --oneline -5"
+- "check which branch" → "git branch --show-current"
+- "stash changes" → "git stash push -m 'Auto-stash'"
+
+ZSH COMPATIBILITY NOTES:
+- Use single quotes for commit messages: 'message here'
+- Use double quotes for variables: "git commit -m \"$MESSAGE\""
+- Escape special characters properly in commit messages
+- Use zsh-compatible command chaining: && for success, || for fallback
+- Avoid bash-specific syntax that might not work in zsh
 
 Convert this request to a Git command:"""
         

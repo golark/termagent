@@ -17,9 +17,10 @@ except ImportError:
 class BaseAgent:
     """Base agent class for all agents in the system."""
     
-    def __init__(self, name: str, debug: bool = False):
+    def __init__(self, name: str, debug: bool = False, no_confirm: bool = False):
         self.name = name
         self.debug = debug
+        self.no_confirm = no_confirm
         self.llm = None
     
     def _debug_print(self, message: str):
@@ -48,7 +49,6 @@ class BaseAgent:
                 return natural_language
             
             # Create messages for LLM
-            self._debug_print("Using LLM for natural language conversion")
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=natural_language)
@@ -59,12 +59,17 @@ class BaseAgent:
             
             # Extract the command from the response
             command = response.content.strip()
-            self._debug_print(f"LLM response: {command}")
             
             # Clean up the response (remove quotes, extra spaces, etc.)
-            command = re.sub(r'^["\']|["\']$', '', command)  # Remove surrounding quotes
+            # Only remove quotes that truly surround the entire command
+            command = command.strip()
+            if (command.startswith('"') and command.endswith('"')) or (command.startswith("'") and command.endswith("'")):
+                command = command[1:-1]  # Remove surrounding quotes
             command = re.sub(r'\s+', ' ', command)  # Normalize spaces
-            self._debug_print(f"Cleaned command: {command}")
+            
+            # Ensure zsh compatibility
+            command = self._ensure_zsh_compatibility(command)
+            self._debug_print(f"🧠 LLM response: {response.content.strip()} | Cleaned: {command}")
             
             return command
             
@@ -73,7 +78,39 @@ class BaseAgent:
             self._debug_print(f"LLM conversion failed: {e}, using input as-is")
             return natural_language
     
+    def _ensure_zsh_compatibility(self, command: str) -> str:
+        """Ensure the command is compatible with zsh shell."""
+        if not command:
+            return command
+        
+        # Fix common bash-specific patterns that might not work in zsh
+        # Replace bash-specific syntax with zsh-compatible alternatives
+        
+        # Fix array syntax: bash uses ${array[@]}, zsh prefers ${array[@]}
+        # (zsh supports both, but let's ensure consistency)
+        
+        # Fix function declaration syntax
+        command = re.sub(r'function\s+(\w+)\s*\(\s*\)', r'\1()', command)
+        
+        # Ensure proper quoting for variables
+        # Replace unquoted variables in certain contexts with quoted versions
+        command = re.sub(r'([^"\'])\$([A-Za-z_][A-Za-z0-9_]*)', r'\1"$\2"', command)
+        
+        # Fix command substitution syntax if needed
+        # zsh supports both $(command) and `command`, prefer $(command)
+        command = re.sub(r'`([^`]+)`', r'$(\1)', command)
+        
+        # Ensure proper escaping for special characters in strings
+        # This is a basic fix - more complex cases might need manual review
+        
+        return command
+    
     def _confirm_operation_execution(self, operation: str, operation_type: str = "operation") -> bool:
+        # Skip confirmation if no_confirm flag is set
+        if self.no_confirm:
+            print(f"✅ {operation}")
+            return True
+            
         print(f"Execute: {operation}")
         print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
         
@@ -91,13 +128,11 @@ class BaseAgent:
     
     def _execute_shell_command(self, command: str, cwd: str = ".") -> str:
         try:
-            if self.debug:
-                self._debug_print(f"Executing shell command: {command}")
-            
-            # Execute the command using subprocess
+            # Execute the command using zsh explicitly
             result = subprocess.run(
                 command,
                 shell=True,
+                executable="/bin/zsh",
                 capture_output=True,
                 text=True,
                 cwd=cwd
@@ -105,8 +140,6 @@ class BaseAgent:
             
             if result.returncode == 0:
                 output = result.stdout.strip() if result.stdout.strip() else "Command executed successfully"
-                if self.debug:
-                    self._debug_print(f"Command successful, output: {output[:100]}...")
                 return output
             else:
                 error_msg = result.stderr.strip() if result.stderr.strip() else "Unknown error"

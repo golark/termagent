@@ -15,8 +15,8 @@ except ImportError:
 class FileAgent(BaseAgent):
     """Agent for handling file operations using natural language."""
     
-    def __init__(self, debug: bool = False, llm_model: str = "gpt-3.5-turbo"):
-        super().__init__("file_agent", debug)
+    def __init__(self, debug: bool = False, llm_model: str = "gpt-3.5-turbo", no_confirm: bool = False):
+        super().__init__("file_agent", debug, no_confirm)
         self._initialize_llm(llm_model)
         
         # Common file operation patterns and their direct commands
@@ -34,9 +34,9 @@ class FileAgent(BaseAgent):
             r'^show\s+current\s+directory$': 'pwd',
             r'^where\s+am\s+i$': 'pwd',
             r'^working\s+directory$': 'pwd',
-            r'^create\s+file\s+(.+)$': 'touch',
-            r'^make\s+file\s+(.+)$': 'touch',
-            r'^new\s+file\s+(.+)$': 'touch',
+            r'^create\s+file\s+([a-zA-Z0-9._-]+)$': 'touch',
+            r'^make\s+file\s+([a-zA-Z0-9._-]+)$': 'touch',
+            r'^new\s+file\s+([a-zA-Z0-9._-]+)$': 'touch',
             r'^create\s+directory\s+(.+)$': 'mkdir',
             r'^make\s+directory\s+(.+)$': 'mkdir',
             r'^new\s+directory\s+(.+)$': 'mkdir',
@@ -74,8 +74,8 @@ class FileAgent(BaseAgent):
                                  for pattern, command in self.common_patterns.items()}
         
         # System prompt for LLM fallback
-        self.system_prompt = """You are a file operation assistant. Convert natural language file operations to shell commands.
-        
+        self.system_prompt = """You are a file operation assistant. Convert natural language file operations to zsh-compatible shell commands.
+                
         Examples:
         - "list files" → "ls"
         - "create a new file called test.txt" → "touch test.txt"
@@ -84,6 +84,15 @@ class FileAgent(BaseAgent):
         - "delete old_file.txt" → "rm old_file.txt"
         - "find all .txt files" → "find . -name '*.txt'"
         - "search for 'hello' in files" → "grep -r 'hello' ."
+        - "count files in directory" → "ls -1 | wc -l"
+        - "list only directories" → "ls -d */"
+        - "show file sizes" → "ls -lh"
+        
+        ZSH COMPATIBILITY NOTES:
+        - Use single quotes for file paths with spaces: 'file with spaces.txt'
+        - Use double quotes for variables: "echo $HOME"
+        - Escape special characters properly: echo "Hello $USER"
+        - Use zsh-compatible globbing: ls *.txt, not ls "*.txt"
         
         Return only the shell command, nothing else."""
     
@@ -98,7 +107,7 @@ class FileAgent(BaseAgent):
             match = pattern.match(natural_language.strip())
             if match:
                 args = [arg.strip() for arg in match.groups() if arg and arg.strip()]
-                self._debug_print(f"Common pattern matched: {command} with args: {args}")
+                self._debug_print(f"Pattern match | {natural_language} -> {command} args:{args}")
                 
                 # For complex queries, prefer LLM over simple pattern matching
                 if command == 'find' and len(args) > 0 and len(args[0]) > 20:
@@ -110,7 +119,6 @@ class FileAgent(BaseAgent):
                 
                 return command, args
         
-        self._debug_print(f"No common pattern matched: {natural_language}")
         return "", []
     
     def _build_command(self, command: str, args: list) -> str:
@@ -121,17 +129,18 @@ class FileAgent(BaseAgent):
         if command in ['ls', 'pwd']:
             return command
         elif command == 'touch' and args:
-            return f"touch {args[0]}"
+            # Ensure proper quoting for zsh compatibility
+            return f"touch '{args[0]}'"
         elif command == 'mkdir' and args:
-            return f"mkdir -p {args[0]}"
+            return f"mkdir -p '{args[0]}'"
         elif command == 'rm' and args:
-            return f"rm {args[0]}"
+            return f"rm '{args[0]}'"
         elif command == 'rmdir' and args:
-            return f"rmdir {args[0]}"
+            return f"rmdir '{args[0]}'"
         elif command == 'cp' and len(args) >= 2:
-            return f"cp {args[0]} {args[1]}"
+            return f"cp '{args[0]}' '{args[1]}'"
         elif command == 'mv' and len(args) >= 2:
-            return f"mv {args[0]} {args[1]}"
+            return f"mv '{args[0]}' '{args[1]}'"
         elif command == 'find' and args:
             return f"find . -name '{args[0]}'"
         elif command == 'grep' and args:
@@ -156,7 +165,6 @@ class FileAgent(BaseAgent):
                 shell_command = self._build_command(parsed_command, args)
             else:
                 # Fallback to LLM conversion
-                self._debug_print("No common pattern matched, using LLM conversion")
                 converted_operation = self._convert_natural_language(command, self.system_prompt)
                 shell_command = converted_operation
             
@@ -165,7 +173,7 @@ class FileAgent(BaseAgent):
                 return self._add_message(state, f"Operation cancelled: {shell_command}", "cancelled")
             
             result = self._execute_shell_command(shell_command)
-            return self._add_message(state, f"✅ File operation executed successfully: {result}", "success", file_result=result)
+            return self._add_message(state, result, "success", file_result=result)
             
         except Exception as e:
             if self.debug:
@@ -183,9 +191,6 @@ class FileAgent(BaseAgent):
     def _execute_file_operation(self, operation: str) -> str:
         """Execute a shell command for file operations."""
         try:
-            if self.debug:
-                self._debug_print(f"Executing shell command: {operation}")
-            
             # Execute the command using subprocess
             result = subprocess.run(
                 operation,
@@ -197,8 +202,6 @@ class FileAgent(BaseAgent):
             
             if result.returncode == 0:
                 output = result.stdout.strip() if result.stdout.strip() else "Command executed successfully"
-                if self.debug:
-                    self._debug_print(f"Command successful, output: {output[:100]}...")
                 return output
             else:
                 error_msg = result.stderr.strip() if result.stderr.strip() else "Unknown error"

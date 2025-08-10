@@ -18,11 +18,11 @@ install:
 
 # Run the application
 run:
-	uv run main.py
+	uv run main.py --no-confirm
 
 # Run the application in debug mode
 debug:
-	uv run main.py --debug
+	uv run main.py --debug --no-confirm
 
 # Run a single command and exit
 oneshot:

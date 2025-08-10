@@ -14,11 +14,14 @@ def main():
     parser = argparse.ArgumentParser(description="TermAgent - LangGraph Agent System")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--oneshot", type=str, help="Execute a single command and exit")
+    parser.add_argument("--no-confirm", action="store_true", help="Skip confirmation prompts")
     args = parser.parse_args()
     
     print("🤖 TermAgent - LangGraph Agent System")
     if args.debug:
         print("🐛 DEBUG MODE ENABLED")
+    if args.no_confirm:
+        print("⏭️  NO-CONFIRM MODE ENABLED")
     print("=" * 40)
     print("This agent can:")
     print("  • Detect and route git commands to a specialized git agent")
@@ -26,11 +29,12 @@ def main():
     print("  • Handle regular commands")
     print("  • Use MCP for agent communication")
     print("  • Show detailed debug information")
+    print("  • Execute zsh-compatible shell commands")
     print()
     
     # Create the agent graph
     print("Initializing agent system...")
-    graph = create_agent_graph(debug=args.debug)
+    graph = create_agent_graph(debug=args.debug, no_confirm=args.no_confirm)
     print("✅ Agent system ready!")
     print()
     

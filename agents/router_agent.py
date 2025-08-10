@@ -7,8 +7,8 @@ from agents.base_agent import BaseAgent
 class RouterAgent(BaseAgent):
     """Router agent that detects git commands and file operations and routes them to appropriate agents."""
     
-    def __init__(self, debug: bool = False):
-        super().__init__("router_agent", debug)
+    def __init__(self, debug: bool = False, no_confirm: bool = False):
+        super().__init__("router_agent", debug, no_confirm)
         
         # Git command patterns to detect - both with and without "git" prefix
         self.git_patterns = [
