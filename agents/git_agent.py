@@ -29,6 +29,7 @@ Examples:
 - "add all files" → "git add ."
 - "commit with message update" → "git commit -m 'update'"
 - "push to remote" → "git push"
+- "fetch origin" → "git fetch origin"
 - "commit and push" → "git add . && git commit -m 'Auto-commit' && git push"
 - "show last 5 commits" → "git log --oneline -5"
 - "check which branch" → "git branch --show-current"
@@ -66,7 +67,6 @@ Convert this request to a Git command:"""
             # Convert natural language to git command using LLM
             self._debug_print("Converting natural language to git command...")
             converted_command = self._convert_natural_language_to_git(command)
-            self._debug_print(f"Converted command: {converted_command}")
             
             # Ask for confirmation before executing
             if not self._confirm_operation_execution(converted_command, "command"):
@@ -74,10 +74,8 @@ Convert this request to a Git command:"""
                 return self._add_message(state, f"⏹️ Command cancelled: {converted_command}", "cancelled")
             
             # Execute the git command
-            self._debug_print(f"Executing command: {converted_command}")
             result = self._execute_shell_command(converted_command)
-            self._debug_print(f"Command execution result: {result[:100]}...")
-            return self._add_message(state, f"✅ Git command executed successfully: {result}", "success", git_result=result)
+            return self._add_message(state, result, "success", git_result=result)
                 
         except Exception as e:
             self._debug_print(f"Error in process: {str(e)}")

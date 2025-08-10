@@ -223,7 +223,6 @@ class RouterAgent(BaseAgent):
     
     def _route_to_git_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
         """Route the command to the git agent."""
-        self._debug_print(f"Routing to git agent: {command}")
         # Add a message indicating routing to git agent
         messages = state.get("messages", [])
         messages.append(AIMessage(content=f"Routing git command: {command}"))
@@ -254,7 +253,6 @@ class RouterAgent(BaseAgent):
     def _normalize_git_command(self, command: str) -> str:
         """Normalize git command to include 'git' prefix if not present."""
         command_lower = command.lower().strip()
-        self._debug_print(f"Normalizing command: {command}")
         
         # If it already starts with "git", return as is
         if command_lower.startswith("git"):
