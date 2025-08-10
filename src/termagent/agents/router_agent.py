@@ -214,21 +214,27 @@ class RouterAgent(BaseAgent):
                     self._debug_print(f"Found compound command pattern '{pattern}' in: {content}")
                     return True
             
-            # Check for git-related keywords
+            # Check for git-related keywords (using word boundaries to avoid substring matches)
             for keyword in self.git_keywords:
-                if keyword in content:
+                # Use word boundaries to avoid matching substrings
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, content, re.IGNORECASE):
                     self._debug_print(f"Found git keyword '{keyword}' in: {content}")
                     return True
             
-            # Check for file-related keywords
+            # Check for file-related keywords (using word boundaries to avoid substring matches)
             for keyword in self.file_keywords:
-                if keyword in content:
+                # Use word boundaries to avoid matching substrings
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, content, re.IGNORECASE):
                     self._debug_print(f"Found file keyword '{keyword}' in: {content}")
                     return True
             
-            # Check for k8s-related keywords
+            # Check for k8s-related keywords (using word boundaries to avoid substring matches)
             for keyword in self.k8s_keywords:
-                if keyword in content:
+                # Use word boundaries to avoid matching substrings like "top" in "stop"
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, content, re.IGNORECASE):
                     self._debug_print(f"Found k8s keyword '{keyword}' in: {content}")
                     return True
             
@@ -292,9 +298,11 @@ class RouterAgent(BaseAgent):
                 self._debug_print(f"Found compound command pattern '{pattern}' in: {content}")
                 return True
         
-        # Check for git-related keywords
+        # Check for git-related keywords (using word boundaries to avoid substring matches)
         for keyword in self.git_keywords:
-            if keyword in content_lower:
+            # Use word boundaries to avoid matching substrings
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, content_lower):
                 self._debug_print(f"Found git keyword '{keyword}' in: {content}")
                 return True
         
@@ -309,9 +317,11 @@ class RouterAgent(BaseAgent):
             self._debug_print(f"Found exact file operation pattern in: {content}")
             return True
         
-        # Check for file-related keywords
+        # Check for file-related keywords (using word boundaries to avoid substring matches)
         for keyword in self.file_keywords:
-            if keyword in content_lower:
+            # Use word boundaries to avoid matching substrings
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, content_lower):
                 self._debug_print(f"Found file keyword '{keyword}' in: {content}")
                 return True
         
@@ -327,9 +337,11 @@ class RouterAgent(BaseAgent):
             self._debug_print(f"Found exact k8s command pattern in: {content}")
             return True
         
-        # Check for k8s-related keywords
+        # Check for k8s-related keywords (using word boundaries to avoid substring matches)
         for keyword in self.k8s_keywords:
-            if keyword in content_lower:
+            # Use word boundaries to avoid matching substrings like "top" in "stop"
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, content_lower):
                 self._debug_print(f"Found k8s keyword '{keyword}' in: {content}")
                 return True
         

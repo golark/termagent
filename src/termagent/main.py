@@ -6,6 +6,7 @@ TermAgent - A LangGraph-based agent system with router and git agent via MCP.
 import sys
 import argparse
 from termagent.termagent_graph import create_agent_graph, process_command
+from termagent.input_handler import create_input_handler
 
 
 def main():
@@ -26,11 +27,15 @@ def main():
     print("This agent can:")
     print("  • Detect and route git commands to a specialized git agent")
     print("  • Detect and route file operations to a specialized file agent")
+    print("  • Detect and route Docker commands to a specialized docker agent")
+    print("  • Detect and route Kubernetes commands to a specialized k8s agent")
     print("  • Edit files with vim or nano")
     print("  • Handle regular commands")
     print("  • Use MCP for agent communication")
     print("  • Show detailed debug information")
     print("  • Execute zsh-compatible shell commands")
+    print("  • Navigate command history with ↑/↓ arrow keys")
+    print("  • Search and manage command history")
     print()
     
     # Create the agent graph
@@ -77,19 +82,41 @@ def main():
     
     # Interactive mode
     print("Enter commands (or 'quit' to exit):")
+    print("Special commands:")
+    print("  history     - Show command history")
+    print("  search <q>  - Search command history")
+    print("  clear       - Clear command history")
+    print("  stats       - Show history statistics")
     print("-" * 30)
+    
+    # Create input handler with command history
+    input_handler = create_input_handler(debug=args.debug)
     
     while True:
         try:
-            # Get user input
-            command = input("> ").strip()
+            # Get user input with history navigation
+            command = input_handler.get_input("> ").strip()
             
             if not command:
                 continue
             
+            # Handle special commands
             if command.lower() in ['quit', 'exit', 'q']:
                 print("👋 Goodbye!")
                 break
+            elif command.lower() == 'history':
+                input_handler.show_history()
+                continue
+            elif command.lower() == 'clear':
+                input_handler.clear_history()
+                continue
+            elif command.lower() == 'stats':
+                input_handler.get_history_stats()
+                continue
+            elif command.lower().startswith('search '):
+                query = command[7:].strip()
+                input_handler.search_history(query)
+                continue
             
             # Process the command
             print(f"\n🔄 Processing: {command}")

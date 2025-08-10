@@ -125,6 +125,26 @@ class BaseAgent:
             print(f"\n❌ {operation_type.capitalize()} cancelled")
             return False
     
+    def _confirm_command(self, command: str) -> bool:
+        """Confirm command execution with user."""
+        if self.no_confirm:
+            return True
+            
+        print(f"Execute command: {command}")
+        print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
+        
+        try:
+            response = input().strip().lower()
+            if response in ['n', 'no', 'cancel', 'skip']:
+                print("❌ Command cancelled")
+                return False
+            else:
+                print("✅ Proceeding with command")
+                return True
+        except KeyboardInterrupt:
+            print("\n❌ Command cancelled")
+            return False
+    
     def _execute_shell_command(self, command: str, cwd: str = ".") -> str:
         try:
             # Execute the command using zsh explicitly
