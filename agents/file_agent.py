@@ -67,6 +67,15 @@ class FileAgent(BaseAgent):
             r'^list\s+hidden\s+files$': 'ls -la',
             r'^show\s+all\s+files$': 'ls -la',
             r'^list\s+all\s+files$': 'ls -la',
+            # File editing patterns
+            r'^edit\s+([a-zA-Z0-9._/-]+)$': 'vim',
+            r'^vim\s+([a-zA-Z0-9._/-]+)$': 'vim',
+            r'^nano\s+([a-zA-Z0-9._/-]+)$': 'nano',
+            r'^open\s+([a-zA-Z0-9._/-]+)$': 'vim',
+            r'^edit\s+file\s+([a-zA-Z0-9._/-]+)$': 'vim',
+            r'^open\s+file\s+([a-zA-Z0-9._/-]+)$': 'vim',
+            r'^edit\s+([a-zA-Z0-9._/-]+)\s+with\s+vim$': 'vim',
+            r'^edit\s+([a-zA-Z0-9._/-]+)\s+with\s+nano$': 'nano',
         }
         
         # Compile patterns for efficient matching
@@ -87,6 +96,10 @@ class FileAgent(BaseAgent):
         - "count files in directory" → "ls -1 | wc -l"
         - "list only directories" → "ls -d */"
         - "show file sizes" → "ls -lh"
+        - "edit file.txt" → "vim file.txt"
+        - "open file.txt with vim" → "vim file.txt"
+        - "edit file.txt with nano" → "nano file.txt"
+        - "open file.txt" → "vim file.txt"
         
         ZSH COMPATIBILITY NOTES:
         - Use single quotes for file paths with spaces: 'file with spaces.txt'
@@ -145,6 +158,10 @@ class FileAgent(BaseAgent):
             return f"find . -name '{args[0]}'"
         elif command == 'grep' and args:
             return f"grep -r '{args[0]}' ."
+        elif command == 'vim' and args:
+            return f"vim '{args[0]}'"
+        elif command == 'nano' and args:
+            return f"nano '{args[0]}'"
         else:
             return command
     
@@ -172,7 +189,13 @@ class FileAgent(BaseAgent):
             if not self._confirm_operation_execution(shell_command, "operation"):
                 return self._add_message(state, f"Operation cancelled: {shell_command}", "cancelled")
             
-            result = self._execute_shell_command(shell_command)
+            # Check if this is an interactive command (vim or nano)
+            if parsed_command in ['vim', 'nano'] or 'vim' in shell_command or 'nano' in shell_command:
+                self._debug_print(f"fileagent: Executing interactive command: {shell_command}")
+                result = self._execute_interactive_command(shell_command)
+            else:
+                result = self._execute_shell_command(shell_command)
+            
             return self._add_message(state, result, "success", file_result=result)
             
         except Exception as e:

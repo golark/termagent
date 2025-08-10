@@ -67,6 +67,10 @@ class RouterAgent(BaseAgent):
             r'^pwd$',        # show current directory
             r'^ls$',         # list files
             r'^dir$',        # list files
+            r'^edit\s+',     # edit files
+            r'^vim\s+',      # edit files with vim
+            r'^nano\s+',     # edit files with nano
+            r'^open\s+',     # open files
             # Natural language patterns
             r'move\s+.*?\s+to\s+',      # move X to Y
             r'copy\s+.*?\s+to\s+',      # copy X to Y
@@ -78,6 +82,10 @@ class RouterAgent(BaseAgent):
             r'list\s+.*?contents',      # list contents
             r'find\s+.*?files',         # find files
             r'rename\s+.*?\s+to\s+',    # rename X to Y
+            r'edit\s+.*?file',          # edit file
+            r'open\s+.*?file',          # open file
+            r'edit\s+.*?with\s+vim',    # edit with vim
+            r'edit\s+.*?with\s+nano',   # edit with nano
         ]
         self.file_command = re.compile('|'.join(self.file_patterns), re.IGNORECASE)
         
@@ -93,7 +101,8 @@ class RouterAgent(BaseAgent):
         self.file_keywords = [
             'move', 'copy', 'delete', 'remove', 'create', 'list', 'find', 
             'rename', 'folder', 'directory', 'file', 'files', 'backup',
-            'transfer', 'duplicate', 'organize', 'sort'
+            'transfer', 'duplicate', 'organize', 'sort', 'edit', 'open',
+            'vim', 'nano', 'editor'
         ]
         
         # Compound command patterns

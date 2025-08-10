@@ -26,6 +26,7 @@ def main():
     print("This agent can:")
     print("  • Detect and route git commands to a specialized git agent")
     print("  • Detect and route file operations to a specialized file agent")
+    print("  • Edit files with vim or nano")
     print("  • Handle regular commands")
     print("  • Use MCP for agent communication")
     print("  • Show detailed debug information")

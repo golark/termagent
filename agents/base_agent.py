@@ -153,6 +153,29 @@ class BaseAgent:
                 self._debug_print(f"Exception during execution: {str(e)}")
             return error_msg
     
+    def _execute_interactive_command(self, command: str, cwd: str = ".") -> str:
+        """Execute an interactive command like vim or nano."""
+        try:
+            self._debug_print(f"Starting interactive command: {command}")
+            # Execute the command interactively (no output capture)
+            result = subprocess.run(
+                command,
+                shell=True,
+                executable="/bin/zsh",
+                cwd=cwd
+            )
+            
+            if result.returncode == 0:
+                return f"✅ Interactive command completed: {command}"
+            else:
+                return f"⚠️ Interactive command exited with code {result.returncode}: {command}"
+                
+        except Exception as e:
+            error_msg = f"Failed to execute interactive command: {str(e)}"
+            if self.debug:
+                self._debug_print(f"Exception during interactive execution: {str(e)}")
+            return error_msg
+    
     def _add_message(self, state: Dict[str, Any], content: str, message_type: str = "success", **kwargs) -> Dict[str, Any]:
         messages = state.get("messages", [])
         messages.append(AIMessage(content=content))
