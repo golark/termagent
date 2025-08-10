@@ -4,6 +4,9 @@ import os
 from typing import Dict, Any, List, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from agents.base_agent import BaseAgent
+import sys
+import tty
+import termios
 
 try:
     from langchain_openai import ChatOpenAI
@@ -94,16 +97,74 @@ Convert this request to a Git command:"""
     
     def _confirm_command_execution(self, command: str) -> bool:
         """Ask for user confirmation before executing a git command."""
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print("↵ to confirm, 'n' to skip")
+                print(f"> {command}", end="")
+                response = input().strip().lower()
+                
+                if response in ['n', 'no', 'cancel', 'skip']:
+                    print("\n❌ Command cancelled by user")
+                    self._debug_print("Command cancelled by user input")
+                    return False
+                else:
+                    self._debug_print(f"User response: '{response}' (will proceed: True)")
+                    return True
+                    
+            except KeyboardInterrupt:
+                print("\n❌ Command cancelled by user")
+                self._debug_print("Command cancelled by keyboard interrupt")
+                return False
+            except EOFError:
+                retry_count += 1
+                if retry_count < max_retries:
+                    print(f"\n⚠️  Input error, retrying... ({retry_count}/{max_retries})")
+                    self._debug_print(f"EOFError occurred, retrying {retry_count}/{max_retries}")
+                else:
+                    print("\n❌ Command cancelled (too many input errors)")
+                    self._debug_print("Command cancelled due to repeated EOFError")
+                    return False
+    
+    def _get_single_char(self) -> str:
+        """Get a single character input from the user."""
         try:
-            print("↵ to confirm, ctrl+c to skip")
-            print(f"> {command}", end="")
-            response = input().strip()
-            self._debug_print(f"User response: '{response}' (will proceed: True)")
-            return True  # Any input (including empty) means proceed
-        except (KeyboardInterrupt, EOFError):
-            print("\n❌ Command cancelled by user")
-            self._debug_print("Command cancelled by keyboard interrupt")
-            return False
+            # Save terminal settings
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            
+            try:
+                # Set terminal to raw mode
+                tty.setraw(sys.stdin.fileno())
+                
+                # Read a single character
+                ch = sys.stdin.read(1)
+                
+                # If it's the start of an escape sequence, read more
+                if ch == '\x1b':
+                    # Read additional characters to complete escape sequence
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == '[':
+                        # This is an arrow key or other escape sequence, not just escape
+                        ch3 = sys.stdin.read(1)
+                        # Return a different character to indicate it's not escape
+                        return 'arrow'
+                    else:
+                        # Just escape key
+                        return '\x1b'
+                
+                return ch
+                
+            finally:
+                # Restore terminal settings
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                
+        except Exception as e:
+            # Fallback to regular input if raw mode fails
+            self._debug_print(f"Raw mode failed: {e}, using fallback")
+            return input().strip()
     
     def _convert_natural_language_to_git(self, natural_language: str) -> str:
         """Convert natural language to git command using LLM."""
