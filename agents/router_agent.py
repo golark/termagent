@@ -8,8 +8,7 @@ class RouterAgent(BaseAgent):
     """Router agent that detects git commands and file operations and routes them to appropriate agents."""
     
     def __init__(self, debug: bool = False):
-        super().__init__("router")
-        self.debug = debug
+        super().__init__("router_agent", debug)
         
         # Git command patterns to detect - both with and without "git" prefix
         self.git_patterns = [
@@ -105,10 +104,7 @@ class RouterAgent(BaseAgent):
         ]
         
     
-    def _debug_print(self, message: str):
-        """Print debug message only if debug mode is enabled."""
-        if self.debug:
-            print(f"[DEBUG] Router: {message}")
+
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
         """Check if the input contains a git command or file operation."""
