@@ -1403,7 +1403,7 @@ wheels = [
 [[package]]
 name = "termagent"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "langchain" },
     { name = "langchain-openai" },
@@ -1411,7 +1411,7 @@ dependencies = [
     { name = "mcp" },
 ]
 
-[package.dev-dependencies]
+[package.optional-dependencies]
 dev = [
     { name = "black" },
     { name = "flake8" },
@@ -1419,17 +1419,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
+    { name = "flake8", marker = "extra == 'dev'", specifier = ">=7.3.0" },
     { name = "langchain", specifier = ">=0.3.27" },
     { name = "langchain-openai", specifier = ">=0.3.29" },
     { name = "langgraph", specifier = ">=0.6.4" },
     { name = "mcp", specifier = ">=1.12.4" },
 ]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=25.1.0" },
-    { name = "flake8", specifier = ">=7.3.0" },
-]
+provides-extras = ["dev"]
 
 [[package]]
 name = "tiktoken"

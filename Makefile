@@ -18,11 +18,11 @@ install:
 
 # Run the application
 run:
-	uv run main.py --no-confirm
+	uv run python -m termagent.main --no-confirm
 
 # Run the application in debug mode
 debug:
-	uv run main.py --debug --no-confirm
+	uv run python -m termagent.main --debug --no-confirm
 
 # Run a single command and exit
 oneshot:
@@ -31,11 +31,11 @@ oneshot:
 		echo "Example: make oneshot CMD='git status'"; \
 		exit 1; \
 	fi
-	uv run main.py --oneshot "$(CMD)"
+	uv run python -m termagent.main --oneshot "$(CMD)"
 
 # Run tests
 test:
-	uv run python -c "from termagent_graph import create_agent_graph; print('✅ Tests passed')"
+	uv run python -c "from termagent.termagent_graph import create_agent_graph; print('✅ Tests passed')"
 
 # Clean cache files
 clean:

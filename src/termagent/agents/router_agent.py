@@ -1,7 +1,7 @@
 import re
 from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, AIMessage
-from agents.base_agent import BaseAgent
+from termagent.agents.base_agent import BaseAgent
 
 
 class RouterAgent(BaseAgent):
@@ -105,6 +105,38 @@ class RouterAgent(BaseAgent):
             'vim', 'nano', 'editor'
         ]
         
+        # Kubernetes command patterns to detect
+        self.kubernetes_patterns = [
+            r'^kubectl\s+',  # Starts with "kubectl "
+            r'^kubectl$',    # Just "kubectl"
+            # Common k8s commands without "kubectl" prefix
+            r'^get\s+',      # get resources
+            r'^describe\s+', # describe resources
+            r'^apply\s+',    # apply yaml
+            r'^delete\s+',   # delete resources
+            r'^scale\s+',    # scale deployments
+            r'^port-forward\s+', # port forward
+            r'^logs\s+',     # get logs
+            r'^exec\s+',     # exec into pods
+            r'^cluster-info$', # cluster info
+            r'^top\s+',      # resource usage
+            r'^events$',     # get events
+            r'^config\s+',   # config operations
+            r'^context\s+',  # context operations
+            r'^namespace\s+', # namespace operations
+        ]
+        self.kubernetes_command = re.compile('|'.join(self.kubernetes_patterns), re.IGNORECASE)
+        
+        # Additional keywords that might indicate kubernetes operations
+        self.kubernetes_keywords = [
+            'pod', 'pods', 'deployment', 'deployments', 'service', 'services',
+            'namespace', 'namespaces', 'node', 'nodes', 'cluster', 'kubernetes',
+            'k8s', 'kubectl', 'container', 'containers', 'replica', 'replicas',
+            'scale', 'scaling', 'port-forward', 'port forward', 'logs', 'exec',
+            'describe', 'apply', 'delete', 'get', 'top', 'events', 'config',
+            'context', 'namespace', 'ingress', 'configmap', 'secret', 'pv', 'pvc'
+        ]
+        
         # Compound command patterns
         self.compound_patterns = [
             r'commit\s+and\s+push',
@@ -141,6 +173,11 @@ class RouterAgent(BaseAgent):
                 self._debug_print(f"Found file operation pattern in: {content}")
                 return True
             
+            # Check for exact kubernetes command patterns
+            if self.kubernetes_command.search(content):
+                self._debug_print(f"Found kubernetes command pattern in: {content}")
+                return True
+            
             # Check for compound commands
             for pattern in self.compound_patterns:
                 if re.search(pattern, content):
@@ -159,6 +196,12 @@ class RouterAgent(BaseAgent):
                     self._debug_print(f"Found file keyword '{keyword}' in: {content}")
                     return True
             
+            # Check for kubernetes-related keywords
+            for keyword in self.kubernetes_keywords:
+                if keyword in content:
+                    self._debug_print(f"Found kubernetes keyword '{keyword}' in: {content}")
+                    return True
+            
             self._debug_print(f"No git or file patterns or keywords found in: {content}")
         
         return False
@@ -171,8 +214,13 @@ class RouterAgent(BaseAgent):
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
             
+            # Check if this is a kubernetes command (prioritize over git to avoid conflicts)
+            if self._is_kubernetes_command(content):
+                self._debug_print(f"🔀 Routing to KUBERNETES_AGENT: {content}")
+                # Route to kubernetes agent
+                return self._route_to_kubernetes_agent(state, content)
             # Check if this is a git command
-            if self._is_git_command(content):
+            elif self._is_git_command(content):
                 self._debug_print(f"🔀 Routing to GIT_AGENT: {content}")
                 # Route to git agent
                 return self._route_to_git_agent(state, content)
@@ -230,6 +278,24 @@ class RouterAgent(BaseAgent):
         self._debug_print(f"No file operation patterns found in: {content}")
         return False
     
+    def _is_kubernetes_command(self, content: str) -> bool:
+        """Check if the content is a kubernetes command."""
+        content_lower = content.lower()
+        
+        # Check for exact kubernetes command patterns
+        if self.kubernetes_command.search(content_lower):
+            self._debug_print(f"Found exact kubernetes command pattern in: {content}")
+            return True
+        
+        # Check for kubernetes-related keywords
+        for keyword in self.kubernetes_keywords:
+            if keyword in content_lower:
+                self._debug_print(f"Found kubernetes keyword '{keyword}' in: {content}")
+                return True
+        
+        self._debug_print(f"No kubernetes operation patterns found in: {content}")
+        return False
+    
     def _route_to_git_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
         """Route the command to the git agent."""
         # Add a message indicating routing to git agent
@@ -256,6 +322,18 @@ class RouterAgent(BaseAgent):
             **state,
             "messages": messages,
             "routed_to": "file_agent",
+            "last_command": command
+        }
+    
+    def _route_to_kubernetes_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
+        """Route the command to the kubernetes agent."""
+        messages = state.get("messages", [])
+        messages.append(AIMessage(content=f"Routing kubernetes command: {command}"))
+        
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": "kubernetes_agent",
             "last_command": command
         }
     

@@ -112,7 +112,7 @@ termagent/
 
 1. Create a new agent class extending `BaseAgent`:
    ```python
-   from agents.base_agent import BaseAgent
+   from termagent.agents.base_agent import BaseAgent
    
    class MyAgent(BaseAgent):
        def __init__(self):

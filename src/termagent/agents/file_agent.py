@@ -2,7 +2,7 @@ import os
 import subprocess
 from typing import Dict, Any
 from langchain_core.messages import AIMessage, HumanMessage
-from agents.base_agent import BaseAgent
+from termagent.agents.base_agent import BaseAgent
 import re
 
 try:

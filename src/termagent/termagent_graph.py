@@ -2,9 +2,10 @@ from typing import Dict, Any, List, TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from agents.router_agent import RouterAgent
-from agents.git_agent import GitAgent
-from agents.file_agent import FileAgent
+from termagent.agents.router_agent import RouterAgent
+from termagent.agents.git_agent import GitAgent
+from termagent.agents.file_agent import FileAgent
+from termagent.agents.kubernetes_agent import KubernetesAgent
 
 
 class AgentState(TypedDict):
@@ -14,6 +15,7 @@ class AgentState(TypedDict):
     last_command: str | None
     git_result: str | None
     file_result: str | None
+    kubernetes_result: str | None
     error: str | None
 
 
@@ -24,6 +26,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     router_agent = RouterAgent(debug=debug, no_confirm=no_confirm)
     git_agent = GitAgent(debug=debug, no_confirm=no_confirm)
     file_agent = FileAgent(debug=debug, no_confirm=no_confirm)
+    kubernetes_agent = KubernetesAgent(debug=debug, no_confirm=no_confirm)
     
     # Create the state graph
     workflow = StateGraph(AgentState)
@@ -32,6 +35,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     workflow.add_node("router", router_agent.process)
     workflow.add_node("git_agent", git_agent.process)
     workflow.add_node("file_agent", file_agent.process)
+    workflow.add_node("kubernetes_agent", kubernetes_agent.process)
     workflow.add_node("handle_regular", handle_regular_command)
     
     # Add conditional edges from router
@@ -41,6 +45,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
         {
             "git_agent": "git_agent",
             "file_agent": "file_agent",
+            "kubernetes_agent": "kubernetes_agent",
             "handle_regular": "handle_regular",
             END: END
         }
@@ -49,6 +54,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     # Add edges to END
     workflow.add_edge("git_agent", END)
     workflow.add_edge("file_agent", END)
+    workflow.add_edge("kubernetes_agent", END)
     workflow.add_edge("handle_regular", END)
     
     # Set entry point
@@ -63,6 +69,8 @@ def route_decision(state: AgentState) -> str:
         return "git_agent"
     elif state.get("routed_to") == "file_agent":
         return "file_agent"
+    elif state.get("routed_to") == "kubernetes_agent":
+        return "kubernetes_agent"
     elif state.get("routed_to") == "regular_command":
         return "handle_regular"
     else:
@@ -96,6 +104,7 @@ def process_command(command: str, graph) -> Dict[str, Any]:
         last_command=None,
         git_result=None,
         file_result=None,
+        kubernetes_result=None,
         error=None
     )
     

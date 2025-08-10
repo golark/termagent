@@ -5,7 +5,7 @@ TermAgent - A LangGraph-based agent system with router and git agent via MCP.
 
 import sys
 import argparse
-from termagent_graph import create_agent_graph, process_command
+from termagent.termagent_graph import create_agent_graph, process_command
 
 
 def main():
