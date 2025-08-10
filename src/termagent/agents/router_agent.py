@@ -105,8 +105,8 @@ class RouterAgent(BaseAgent):
             'vim', 'nano', 'editor'
         ]
         
-        # Kubernetes command patterns to detect
-        self.kubernetes_patterns = [
+        # K8s command patterns to detect
+        self.k8s_patterns = [
             r'^kubectl\s+',  # Starts with "kubectl "
             r'^kubectl$',    # Just "kubectl"
             # Common k8s commands without "kubectl" prefix
@@ -125,16 +125,41 @@ class RouterAgent(BaseAgent):
             r'^context\s+',  # context operations
             r'^namespace\s+', # namespace operations
         ]
-        self.kubernetes_command = re.compile('|'.join(self.kubernetes_patterns), re.IGNORECASE)
+        self.k8s_command = re.compile('|'.join(self.k8s_patterns), re.IGNORECASE)
         
-        # Additional keywords that might indicate kubernetes operations
-        self.kubernetes_keywords = [
+        # Docker command patterns to detect
+        self.docker_patterns = [
+            r'^docker\s+',   # Starts with "docker "
+            r'^docker$',     # Just "docker"
+            r'^container\s+', # Container operations
+            r'^image\s+',    # Image operations
+            r'^build\s+',    # Build operations
+            r'^run\s+',      # Run operations
+            r'^stop\s+',     # Stop operations
+            r'^start\s+',    # Start operations
+            r'^rm\s+',       # Remove operations
+            r'^ps\s*$',      # List containers
+            r'^exec\s+',     # Execute in container
+            r'^logs\s+',     # Container logs
+        ]
+        self.docker_command = re.compile('|'.join(self.docker_patterns), re.IGNORECASE)
+        
+        # Additional keywords that might indicate k8s operations
+        self.k8s_keywords = [
             'pod', 'pods', 'deployment', 'deployments', 'service', 'services',
-            'namespace', 'namespaces', 'node', 'nodes', 'cluster', 'kubernetes',
-            'k8s', 'kubectl', 'container', 'containers', 'replica', 'replicas',
+            'namespace', 'namespaces', 'node', 'nodes', 'cluster', 'k8s',
+            'k8s', 'kubectl', 'replica', 'replicas',
             'scale', 'scaling', 'port-forward', 'port forward', 'logs', 'exec',
             'describe', 'apply', 'delete', 'get', 'top', 'events', 'config',
             'context', 'namespace', 'ingress', 'configmap', 'secret', 'pv', 'pvc'
+        ]
+        
+        # Additional keywords that might indicate Docker operations
+        self.docker_keywords = [
+            'docker', 'container', 'containers', 'image', 'images', 'build',
+            'run', 'stop', 'start', 'rm', 'ps', 'exec', 'logs', 'volume',
+            'volumes', 'network', 'networks', 'compose', 'stack', 'service',
+            'swarm', 'registry', 'hub', 'tag', 'push', 'pull', 'inspect'
         ]
         
         # Compound command patterns
@@ -173,9 +198,14 @@ class RouterAgent(BaseAgent):
                 self._debug_print(f"Found file operation pattern in: {content}")
                 return True
             
-            # Check for exact kubernetes command patterns
-            if self.kubernetes_command.search(content):
-                self._debug_print(f"Found kubernetes command pattern in: {content}")
+            # Check for exact k8s command patterns
+            if self.k8s_command.search(content):
+                self._debug_print(f"Found k8s command pattern in: {content}")
+                return True
+            
+            # Check for exact Docker command patterns
+            if self.docker_command.search(content):
+                self._debug_print(f"Found Docker command pattern in: {content}")
                 return True
             
             # Check for compound commands
@@ -196,13 +226,18 @@ class RouterAgent(BaseAgent):
                     self._debug_print(f"Found file keyword '{keyword}' in: {content}")
                     return True
             
-            # Check for kubernetes-related keywords
-            for keyword in self.kubernetes_keywords:
+            # Check for k8s-related keywords
+            for keyword in self.k8s_keywords:
                 if keyword in content:
-                    self._debug_print(f"Found kubernetes keyword '{keyword}' in: {content}")
+                    self._debug_print(f"Found k8s keyword '{keyword}' in: {content}")
                     return True
             
-            self._debug_print(f"No git or file patterns or keywords found in: {content}")
+            # Check for Docker-related keywords
+            for keyword in self.docker_keywords:
+                if keyword in content:
+                    return True
+            
+            self._debug_print(f"No git, file, k8s, or Docker patterns or keywords found in: {content}")
         
         return False
     
@@ -214,11 +249,16 @@ class RouterAgent(BaseAgent):
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
             
-            # Check if this is a kubernetes command (prioritize over git to avoid conflicts)
-            if self._is_kubernetes_command(content):
-                self._debug_print(f"🔀 Routing to KUBERNETES_AGENT: {content}")
-                # Route to kubernetes agent
-                return self._route_to_kubernetes_agent(state, content)
+            # Check if this is a k8s command (prioritize over git to avoid conflicts)
+            if self._is_k8s_command(content):
+                self._debug_print(f"🔀 Routing to K8S_AGENT: {content}")
+                # Route to k8s agent
+                return self._route_to_k8s_agent(state, content)
+            # Check if this is a Docker command
+            elif self._is_docker_command(content):
+                self._debug_print(f"🔀 Routing to DOCKER_AGENT: {content}")
+                # Route to Docker agent
+                return self._route_to_docker_agent(state, content)
             # Check if this is a git command
             elif self._is_git_command(content):
                 self._debug_print(f"🔀 Routing to GIT_AGENT: {content}")
@@ -278,22 +318,38 @@ class RouterAgent(BaseAgent):
         self._debug_print(f"No file operation patterns found in: {content}")
         return False
     
-    def _is_kubernetes_command(self, content: str) -> bool:
-        """Check if the content is a kubernetes command."""
+    def _is_k8s_command(self, content: str) -> bool:
+        """Check if the content is a k8s command."""
         content_lower = content.lower()
         
-        # Check for exact kubernetes command patterns
-        if self.kubernetes_command.search(content_lower):
-            self._debug_print(f"Found exact kubernetes command pattern in: {content}")
+        # Check for exact k8s command patterns
+        if self.k8s_command.search(content_lower):
+            self._debug_print(f"Found exact k8s command pattern in: {content}")
             return True
         
-        # Check for kubernetes-related keywords
-        for keyword in self.kubernetes_keywords:
+        # Check for k8s-related keywords
+        for keyword in self.k8s_keywords:
             if keyword in content_lower:
-                self._debug_print(f"Found kubernetes keyword '{keyword}' in: {content}")
+                self._debug_print(f"Found k8s keyword '{keyword}' in: {content}")
                 return True
         
-        self._debug_print(f"No kubernetes operation patterns found in: {content}")
+        return False
+    
+    def _is_docker_command(self, content: str) -> bool:
+        """Check if the content is a Docker command."""
+        content_lower = content.lower()
+        
+        # Check for exact Docker command patterns
+        if self.docker_command.search(content_lower):
+            self._debug_print(f"Found exact Docker command pattern in: {content}")
+            return True
+        
+        # Check for Docker-related keywords
+        for keyword in self.docker_keywords:
+            if keyword in content_lower:
+                return True
+        
+        self._debug_print(f"No Docker operation patterns found in: {content}")
         return False
     
     def _route_to_git_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
@@ -325,15 +381,27 @@ class RouterAgent(BaseAgent):
             "last_command": command
         }
     
-    def _route_to_kubernetes_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Route the command to the kubernetes agent."""
+    def _route_to_k8s_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
+        """Route the command to the k8s agent."""
         messages = state.get("messages", [])
-        messages.append(AIMessage(content=f"Routing kubernetes command: {command}"))
+        messages.append(AIMessage(content=f"Routing k8s command: {command}"))
         
         return {
             **state,
             "messages": messages,
-            "routed_to": "kubernetes_agent",
+            "routed_to": "k8s_agent",
+            "last_command": command
+        }
+    
+    def _route_to_docker_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
+        """Route the command to the Docker agent."""
+        messages = state.get("messages", [])
+        messages.append(AIMessage(content=f"Routing Docker command: {command}"))
+        
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": "docker_agent",
             "last_command": command
         }
     

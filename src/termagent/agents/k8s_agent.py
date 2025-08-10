@@ -10,17 +10,17 @@ except ImportError:
     LLM_AVAILABLE = False
 
 
-class KubernetesAgent(BaseAgent):
-    """Kubernetes agent that handles k8s cluster administration commands with LLM interface."""
+class K8sAgent(BaseAgent):
+    """K8s agent that handles k8s cluster administration commands with LLM interface."""
     
     def __init__(self, llm_model: str = "gpt-3.5-turbo", debug: bool = False, no_confirm: bool = False):
-        super().__init__("kubernetes_agent", debug, no_confirm)
+        super().__init__("k8s_agent", debug, no_confirm)
         
         # Initialize LLM using base class method
         self._initialize_llm(llm_model)
         
         # System prompt for LLM
-        self.system_prompt = """Convert natural language to zsh-compatible Kubernetes commands. Return only the command, nothing else.
+        self.system_prompt = """Convert natural language to zsh-compatible K8s commands. Return only the command, nothing else.
 
 IMPORTANT: Commands must work in zsh shell. Use zsh-compatible syntax.
 
@@ -49,18 +49,18 @@ ZSH COMPATIBILITY NOTES:
 - Use zsh-compatible command chaining: && for success, || for fallback
 - Avoid bash-specific syntax that might not work in zsh
 
-Convert this request to a Kubernetes command:"""
+Convert this request to a K8s command:"""
         
-        self._debug_print("🤖 KubernetesAgent initialized successfully")
+        self._debug_print("🤖 K8sAgent initialized successfully")
 
     def should_handle(self, state: Dict[str, Any]) -> bool:
         """Check if this agent should handle the current input."""
-        should_handle = state.get("routed_to") == "kubernetes_agent"
+        should_handle = state.get("routed_to") == "k8s_agent"
         self._debug_print(f"should_handle: {should_handle} (routed_to: {state.get('routed_to')})")
         return should_handle
     
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process kubernetes commands with LLM support for natural language conversion."""
+        """Process k8s commands with LLM support for natural language conversion."""
         command = state.get("last_command", "")
         self._debug_print(f"Processing command: {command}")
         
@@ -69,8 +69,8 @@ Convert this request to a Kubernetes command:"""
             return state
         
         try:
-            # Convert natural language to kubernetes command using LLM
-            self._debug_print("Converting natural language to kubernetes command...")
+            # Convert natural language to k8s command using LLM
+            self._debug_print("Converting natural language to k8s command...")
             converted_command = self._convert_natural_language_to_k8s(command)
             
             # Ask for confirmation before executing
@@ -78,16 +78,16 @@ Convert this request to a Kubernetes command:"""
                 self._debug_print("Command cancelled by user")
                 return self._add_message(state, f"⏹️ Command cancelled: {converted_command}", "cancelled")
             
-            # Execute the kubernetes command
+            # Execute the k8s command
             result = self._execute_shell_command(converted_command)
-            return self._add_message(state, result, "success", kubernetes_result=result)
+            return self._add_message(state, result, "success", k8s_result=result)
                 
         except Exception as e:
             self._debug_print(f"Error in process: {str(e)}")
-            return self._add_message(state, f"❌ Kubernetes command failed: {str(e)}", "error")
+            return self._add_message(state, f"❌ K8s command failed: {str(e)}", "error")
     
     def _convert_natural_language_to_k8s(self, natural_language: str) -> str:
-        """Convert natural language to kubernetes command using LLM."""
+        """Convert natural language to k8s command using LLM."""
         result = self._convert_natural_language(natural_language, self.system_prompt)
         # Add kubectl prefix if the result doesn't already start with kubectl
         if not result.lower().startswith("kubectl "):

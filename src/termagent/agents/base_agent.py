@@ -32,7 +32,6 @@ class BaseAgent:
         if LLM_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
             try:
                 self.llm = ChatOpenAI(model=llm_model, temperature=0)
-                self._debug_print(f"✅ LLM initialized with model: {llm_model}")
                 return True
             except Exception as e:
                 self._debug_print(f"⚠️ LLM initialization failed: {e}")
