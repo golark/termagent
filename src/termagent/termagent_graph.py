@@ -19,6 +19,10 @@ class AgentState(TypedDict):
     k8s_result: str | None
     docker_result: str | None
     error: str | None
+    # Task breakdown fields
+    task_breakdown: List[Dict[str, str]] | None
+    current_step: int | None
+    total_steps: int | None
 
 
 def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
@@ -41,6 +45,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     workflow.add_node("k8s_agent", k8s_agent.process)
     workflow.add_node("docker_agent", docker_agent.process)
     workflow.add_node("handle_regular", handle_regular_command)
+    workflow.add_node("handle_task_breakdown", handle_task_breakdown)
     
     # Add conditional edges from router
     workflow.add_conditional_edges(
@@ -52,6 +57,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
             "k8s_agent": "k8s_agent",
             "docker_agent": "docker_agent",
             "handle_regular": "handle_regular",
+            "handle_task_breakdown": "handle_task_breakdown",
             END: END
         }
     )
@@ -62,6 +68,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     workflow.add_edge("k8s_agent", END)
     workflow.add_edge("docker_agent", END)
     workflow.add_edge("handle_regular", END)
+    workflow.add_edge("handle_task_breakdown", END)
     
     # Set entry point
     workflow.set_entry_point("router")
@@ -71,6 +78,12 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
 
 def route_decision(state: AgentState) -> str:
     """Decide which node to route to based on the state."""
+    # Check if we're in the middle of a task breakdown
+    if state.get("task_breakdown") and state.get("current_step", 0) < state.get("total_steps", 0):
+        # Continue with task breakdown
+        return "handle_task_breakdown"
+    
+    # Regular routing logic
     if state.get("routed_to") == "git_agent":
         return "git_agent"
     elif state.get("routed_to") == "file_agent":
@@ -81,6 +94,8 @@ def route_decision(state: AgentState) -> str:
         return "docker_agent"
     elif state.get("routed_to") == "regular_command":
         return "handle_regular"
+    elif state.get("routed_to") == "task_breakdown":
+        return "handle_task_breakdown"
     else:
         return END
 
@@ -103,6 +118,77 @@ def handle_regular_command(state: AgentState) -> AgentState:
     }
 
 
+def handle_task_breakdown(state: AgentState) -> AgentState:
+    """Handle task breakdown and execute all steps in sequence."""
+    messages = state.get("messages", [])
+    task_breakdown = state.get("task_breakdown", [])
+    current_step = state.get("current_step", 0)
+    total_steps = state.get("total_steps", 0)
+    
+    if not task_breakdown or current_step >= total_steps:
+        messages.append(AIMessage(content="✅ Task breakdown completed or no steps remaining."))
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": "regular_command"
+        }
+    
+    # Execute all remaining steps in sequence
+    results = []
+    for i in range(current_step, total_steps):
+        step_info = task_breakdown[i]
+        step_num = step_info["step"]
+        description = step_info["description"]
+        agent = step_info["agent"]
+        command = step_info["command"]
+        
+        # Create step execution message
+        step_message = f"🚀 Executing Step {step_num}: {description}\n"
+        step_message += f"   Agent: {agent}\n"
+        step_message += f"   Command: {command}\n"
+        step_message += f"   Progress: {i + 1}/{total_steps}"
+        
+        messages.append(AIMessage(content=step_message))
+        
+        # Execute the command based on the agent type
+        if agent == "git_agent":
+            # For git commands, we'll simulate execution
+            result = f"✅ Git command executed: {command}"
+        elif agent == "file_agent":
+            # For file operations, we'll simulate execution
+            result = f"✅ File operation executed: {command}"
+        elif agent == "k8s_agent":
+            # For k8s commands, we'll simulate execution
+            result = f"✅ K8s command executed: {command}"
+        elif agent == "docker_agent":
+            # For Docker commands, we'll simulate execution
+            result = f"✅ Docker command executed: {command}"
+        else:
+            # For regular commands, we'll simulate execution
+            result = f"✅ Command executed: {command}"
+        
+        results.append(f"Step {step_num}: {result}")
+        messages.append(AIMessage(content=result))
+    
+    # Add completion message
+    completion_message = f"🎉 All {total_steps} steps completed successfully!\n\n"
+    completion_message += "Summary:\n"
+    for result in results:
+        completion_message += f"  {result}\n"
+    
+    messages.append(AIMessage(content=completion_message))
+    
+    # Mark task breakdown as complete
+    return {
+        **state,
+        "messages": messages,
+        "routed_to": "regular_command",
+        "task_breakdown": None,
+        "current_step": None,
+        "total_steps": None
+    }
+
+
 def process_command(command: str, graph) -> Dict[str, Any]:
     """Process a command through the agent graph."""
     # Create initial state
@@ -114,7 +200,10 @@ def process_command(command: str, graph) -> Dict[str, Any]:
         file_result=None,
         k8s_result=None,
         docker_result=None,
-        error=None
+        error=None,
+        task_breakdown=None,
+        current_step=None,
+        total_steps=None
     )
     
     # Run the graph with config

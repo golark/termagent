@@ -75,7 +75,13 @@ Convert this request to a Git command:"""
             
             # Execute the git command
             result = self._execute_shell_command(converted_command)
-            return self._add_message(state, result, "success", git_result=result)
+            state = self._add_message(state, result, "success", git_result=result)
+            
+            # Check if we should continue with task breakdown
+            if state.get("task_breakdown"):
+                return self._continue_task_breakdown(state)
+            
+            return state
                 
         except Exception as e:
             self._debug_print(f"Error in process: {str(e)}")

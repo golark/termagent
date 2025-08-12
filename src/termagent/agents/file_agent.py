@@ -19,6 +19,26 @@ class FileAgent(BaseAgent):
         super().__init__("file_agent", debug, no_confirm)
         self._initialize_llm(llm_model)
         
+        # Planning prompt for minimal file operations
+        self.planning_prompt = """Create a minimal, concise file operation plan with only essential steps.
+
+IMPORTANT: Keep steps minimal and focused. Only include necessary actions.
+
+Format: One action per line, starting with:
+- Execute: for commands to run
+- Action: for specific actions
+
+Keep each line short and direct. Focus only on the core file operation.
+
+Example format:
+Execute: ls -la
+Action: Create backup directory
+Execute: cp source.txt backup/
+
+CRITICAL: Be minimal. Only include essential steps needed to complete the task.
+
+Now create a minimal plan for this task:"""
+        
         # Common file operation patterns and their direct commands
         self.common_patterns = {
             r'^list\s+files?$': 'ls',
@@ -114,6 +134,165 @@ class FileAgent(BaseAgent):
         should_handle = state.get("routed_to") == "file_agent"
         return should_handle
     
+    
+    def _create_task_plan(self, task: str) -> str:
+        """Create a detailed plan for complex file operations."""
+        try:
+            # Use LLM to create a structured plan
+            plan_prompt = f"Task: {task}\n\n{self.planning_prompt}"
+            plan = self._convert_natural_language(task, self.planning_prompt)
+            
+            if not plan:
+                return "⚠️ Failed to create plan - proceeding with direct execution"
+            
+            return plan
+            
+        except Exception as e:
+            self._debug_print(f"Error creating plan: {str(e)}")
+            return f"⚠️ Plan creation failed: {str(e)} - proceeding with direct execution"
+    
+    def _execute_planned_tasks(self, plan: str, original_task: str) -> str:
+        """Execute file operations according to the created plan."""
+        
+        # Parse the plan and execute step by step
+        lines = plan.split('\n')
+        results = []
+        step_count = 0
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('//'):
+                continue
+                
+            # Look for actionable items (minimal format)
+            if any(marker in line.lower() for marker in ['action:', 'execute:']):
+                step_count += 1
+                
+                # Extract the command from the line
+                command = self._extract_command_from_plan_line(line)
+                if command:
+                    try:
+                        result = self._execute_shell_command(command)
+                        self._debug_print(f"{step_count} | Command: {command} | result: {result}")
+                        results.append(f"Step {step_count}: ✅ {result}")
+                    except Exception as e:
+                        error_msg = f"Command failed: {str(e)}"
+                        self._debug_print(error_msg)
+                        results.append(f"Step {step_count}: ❌ Failed - {str(e)}")
+                else:
+                    # For non-command lines, just note them
+                    self._debug_print(f"No command to execute for step {step_count}: {line}")
+                    results.append(f"Step {step_count}: ℹ️ {line}")
+        
+        if not results:
+            return f"⚠️ No actionable steps found in plan. Original task: {original_task}"
+        
+        return "\n".join(results)
+    
+    def _extract_command_from_plan_line(self, line: str) -> str:
+        """Extract shell command from a plan line."""
+        # Remove common markers
+        markers = ['Action:', 'Execute:']
+        cleaned_line = line
+        
+        for marker in markers:
+            if marker.lower() in line.lower():
+                # Find the position of the marker and extract everything after it
+                marker_pos = line.lower().find(marker.lower())
+                if marker_pos != -1:
+                    cleaned_line = line[marker_pos + len(marker):].strip()
+                    break
+        
+        # If the cleaned line contains a shell command, extract it
+        if cleaned_line:
+            # Look for common shell commands
+            shell_commands = ['ls', 'pwd', 'touch', 'mkdir', 'rm', 'rmdir', 'cp', 'mv', 'find', 'grep', 'vim', 'nano', 'cat', 'head', 'tail', 'wc', 'du', 'df']
+            
+            for cmd in shell_commands:
+                if cmd in cleaned_line:
+                    # Extract the command and its arguments
+                    cmd_start = cleaned_line.find(cmd)
+                    if cmd_start != -1:
+                        command_part = cleaned_line[cmd_start:].strip()
+                        # Clean up any extra text after the command
+                        if ' ' in command_part:
+                            # Find the end of the command (before any explanatory text)
+                            parts = command_part.split(' ')
+                            if len(parts) >= 1:
+                                return ' '.join(parts)
+                        else:
+                            return command_part
+            
+            # If no specific command found, return the cleaned line as potential command
+            return cleaned_line
+        
+        return ""
+    
+    def _normalize_plan(self, plan: str) -> str:
+        """Normalize the plan to ensure proper line breaks."""
+        # If the plan is all on one line, try to split it intelligently
+        if '\n' not in plan or plan.count('\n') < 2:
+            self._debug_print("Plan appears to be on one line, attempting to normalize...")
+            
+            # Split by common markers
+            markers = ['Action:', 'Execute:']
+            normalized_lines = []
+            
+            for marker in markers:
+                if marker in plan:
+                    # Split by this marker and keep the marker
+                    parts = plan.split(marker)
+                    for i, part in enumerate(parts):
+                        if i == 0:  # First part doesn't have the marker
+                            if part.strip():
+                                normalized_lines.append(part.strip())
+                        else:  # Subsequent parts have the marker
+                            if part.strip():
+                                normalized_lines.append(f"{marker}{part.strip()}")
+            
+            if normalized_lines:
+                return '\n'.join(normalized_lines)
+        
+        return plan
+    
+    def _validate_plan(self, plan: str) -> bool:
+        """Validate that the plan contains actionable steps."""
+        if not plan:
+            return False
+        
+        lines = plan.split('\n')
+        actionable_lines = 0
+        
+        for line in lines:
+            line = line.strip()
+            if line and any(marker in line.lower() for marker in ['action:', 'execute:']):
+                actionable_lines += 1
+        
+        return actionable_lines >= 1
+    
+    def _format_plan_for_display(self, plan: str) -> str:
+        """Format the plan for better display to the user."""
+        if not plan:
+            return "No plan available"
+        
+        lines = plan.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Format different types of lines
+            if line.lower().startswith('action:'):
+                formatted_lines.append(f"⚡ {line}")
+            elif line.lower().startswith('execute:'):
+                formatted_lines.append(f"🚀 {line}")
+            else:
+                formatted_lines.append(f"ℹ️ {line}")
+        
+        return '\n'.join(formatted_lines)
+    
     def _parse_common_pattern(self, natural_language: str) -> tuple[str, list]:
         """Parse natural language input using common patterns and return command and arguments."""
         for pattern, command in self.compiled_patterns.items():
@@ -124,10 +303,10 @@ class FileAgent(BaseAgent):
                 
                 # For complex queries, prefer LLM over simple pattern matching
                 if command == 'find' and len(args) > 0 and len(args[0]) > 20:
-                    self._debug_print(f"Complex find query detected, using LLM instead")
+                    self._debug_print(f" Complex find query detected, using LLM instead")
                     return "", []
                 if command == 'grep' and len(args) > 0 and len(args[0]) > 20:
-                    self._debug_print(f"Complex grep query detected, using LLM instead")
+                    self._debug_print(f" Complex grep query detected, using LLM instead")
                     return "", []
                 
                 return command, args
@@ -166,41 +345,68 @@ class FileAgent(BaseAgent):
             return command
     
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process file operations using pattern matching first, then LLM fallback."""
+        """Process file operations with planning for all tasks."""
         command = state.get("last_command", "")
-        self._debug_print(f"Processing command: {command}")
+        self._debug_print(f" Processing command: {command}")
         
         if not command:
             return state
         
         try:
-            # First try to match common patterns
-            parsed_command, args = self._parse_common_pattern(command)
+            plan = self._create_task_plan(command)
             
-            if parsed_command:
-                # Use common pattern match
-                shell_command = self._build_command(parsed_command, args)
-            else:
-                # Fallback to LLM conversion
-                converted_operation = self._convert_natural_language(command, self.system_prompt)
-                shell_command = converted_operation
+            plan = self._normalize_plan(plan)
+            self._debug_print(f"plan: {plan}")
             
-           
-            if not self._confirm_operation_execution(shell_command, "operation"):
-                return self._add_message(state, f"Operation cancelled: {shell_command}", "cancelled")
+            # Validate the plan
+            if not self._validate_plan(plan):
+                self._debug_print(" Plan validation failed - falling back to direct execution")
+                # Fall back to direct execution if plan is invalid
+                parsed_command, args = self._parse_common_pattern(command)
+                if parsed_command:
+                    shell_command = self._build_command(parsed_command, args)
+                else:
+                    shell_command = self._convert_natural_language(command, self.system_prompt)
+                
+                if shell_command:
+                    if not self._confirm_operation_execution(shell_command, "operation"):
+                        return self._add_message(state, f"Operation cancelled: {shell_command}", "cancelled")
+                    
+                    result = self._execute_shell_command(shell_command)
+                    state = self._add_message(state, result, "success", file_result=result)
+                    
+                    # Check if we should continue with task breakdown
+                    if state.get("task_breakdown"):
+                        return self._continue_task_breakdown(state)
+                    
+                    return state
+                else:
+                    return self._add_message(state, "❌ Failed to convert command", "error")
             
-            # Check if this is an interactive command (vim or nano)
-            if parsed_command in ['vim', 'nano'] or 'vim' in shell_command or 'nano' in shell_command:
-                self._debug_print(f"fileagent: Executing interactive command: {shell_command}")
-                result = self._execute_interactive_command(shell_command)
-            else:
-                result = self._execute_shell_command(shell_command)
+            # Format the plan for better display
+            formatted_plan = self._format_plan_for_display(plan)
             
-            return self._add_message(state, result, "success", file_result=result)
+            # Show the plan to the user
+            plan_message = f"📋 **Execution Plan for: {command}**\n\n{formatted_plan}\n\nProceed with plan execution?"
+            state = self._add_message(state, plan_message, "info")
+            
+            # Ask for confirmation to execute the plan
+            if not self._confirm_operation_execution(f"Execute planned file operations for: {command}", "plan"):
+                return self._add_message(state, f"⏹️ Plan execution cancelled for: {command}", "cancelled")
+            
+            # Execute the planned tasks
+            result = self._execute_planned_tasks(plan, command)
+            state = self._add_message(state, result, "success", file_result=result)
+            
+            # Check if we should continue with task breakdown
+            if state.get("task_breakdown"):
+                return self._continue_task_breakdown(state)
+            
+            return state
             
         except Exception as e:
             if self.debug:
-                self._debug_print(f"Error in process: {str(e)}")
+                self._debug_print(f" Error in process: {str(e)}")
             return self._add_message(state, f"❌ File operation failed: {str(e)}", "error")
     
 

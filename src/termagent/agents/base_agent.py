@@ -218,6 +218,28 @@ class BaseAgent:
         
         return updated_state
     
+    def _continue_task_breakdown(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Continue with task breakdown after agent completion."""
+        task_breakdown = state.get("task_breakdown")
+        current_step = state.get("current_step", 0)
+        total_steps = state.get("total_steps", 0)
+        
+        if not task_breakdown or current_step >= total_steps:
+            # Task breakdown is complete
+            return {
+                **state,
+                "routed_to": "regular_command",
+                "task_breakdown": None,
+                "current_step": None,
+                "total_steps": None
+            }
+        
+        # Continue with next step
+        return {
+            **state,
+            "routed_to": "task_breakdown"
+        }
+    
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError("Subclasses must implement this method")
     

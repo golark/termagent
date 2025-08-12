@@ -1,488 +1,203 @@
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
 
 
 class RouterAgent(BaseAgent):
-    """Router agent that detects git commands and file operations and routes them to appropriate agents."""
+    """Router agent that detects complex tasks and breaks them down into steps."""
     
     def __init__(self, debug: bool = False, no_confirm: bool = False):
         super().__init__("router_agent", debug, no_confirm)
         
-        # Git command patterns to detect - both with and without "git" prefix
-        self.git_patterns = [
-            r'^git\s+',  # Starts with "git "
-            r'^git$',    # Just "git"
-            # Common git commands without "git" prefix
-            r'^commit\s+',  # commit message
-            r'^commit$',    # just commit
-            r'^push\s+',    # push to remote
-            r'^push$',      # just push
-            r'^pull\s+',    # pull from remote
-            r'^pull$',      # just pull
-            r'^status$',    # git status
-            r'^add\s+',     # add files
-            r'^add$',       # just add
-            r'^branch\s+',  # branch operations
-            r'^branch$',    # just branch
-            r'^checkout\s+', # checkout
-            r'^checkout$',   # just checkout
-            r'^merge\s+',   # merge
-            r'^merge$',     # just merge
-            r'^log\s+',     # log
-            r'^log$',       # just log
-            r'^diff\s+',    # diff
-            r'^diff$',      # just diff
-            r'^stash\s+',   # stash
-            r'^stash$',     # just stash
-            r'^reset\s+',   # reset
-            r'^reset$',     # just reset
-            r'^clone\s+',   # clone
-            r'^clone$',     # just clone
-            r'^init$',      # init
-            r'^remote\s+',  # remote operations
-            r'^remote$',    # just remote
-            r'^fetch\s+',   # fetch
-            r'^fetch$',     # just fetch
-            r'^tag\s+',     # tag
-            r'^tag$',       # just tag
-            r'^rebase\s+',  # rebase
-            r'^rebase$',    # just rebase
-            r'^cherry-pick\s+', # cherry-pick
-            r'^cherry-pick$',   # just cherry-pick
-        ]
-        self.git_command = re.compile('|'.join(self.git_patterns), re.IGNORECASE)
-        
-        # File operation patterns to detect
-        self.file_patterns = [
-            r'^move\s+',     # move files
-            r'^copy\s+',     # copy files
-            r'^delete\s+',   # delete files
-            r'^remove\s+',   # remove files
-            r'^mkdir\s+',    # create directory
-            r'^list\s+',     # list files
-            r'^find\s+',     # find files
-            r'^rename\s+',   # rename files
-            r'^pwd$',        # show current directory
-            r'^ls$',         # list files
-            r'^dir$',        # list files
-            r'^edit\s+',     # edit files
-            r'^vim\s+',      # edit files with vim
-            r'^nano\s+',     # edit files with nano
-            r'^open\s+',     # open files
-            # Natural language patterns
-            r'move\s+.*?\s+to\s+',      # move X to Y
-            r'copy\s+.*?\s+to\s+',      # copy X to Y
-            r'delete\s+.*',             # delete X
-            r'remove\s+.*',             # remove X
-            r'create\s+.*?folder',      # create folder
-            r'create\s+.*?directory',   # create directory
-            r'list\s+.*?files',         # list files
-            r'list\s+.*?contents',      # list contents
-            r'find\s+.*?files',         # find files
-            r'rename\s+.*?\s+to\s+',    # rename X to Y
-            r'edit\s+.*?file',          # edit file
-            r'open\s+.*?file',          # open file
-            r'edit\s+.*?with\s+vim',    # edit with vim
-            r'edit\s+.*?with\s+nano',   # edit with nano
-        ]
-        self.file_command = re.compile('|'.join(self.file_patterns), re.IGNORECASE)
-        
-        # Additional keywords that might indicate git operations
-        self.git_keywords = [
-            'commit', 'push', 'pull', 'status', 'add', 'branch', 'checkout',
-            'merge', 'log', 'diff', 'stash', 'reset', 'clone', 'init',
-            'remote', 'fetch', 'tag', 'rebase', 'cherry-pick', 'repository',
-            'repo', 'version control', 'git'
-        ]
-        
-        # Additional keywords that might indicate file operations
-        self.file_keywords = [
-            'move', 'copy', 'delete', 'remove', 'create', 'list', 'find', 
-            'rename', 'folder', 'directory', 'file', 'files', 'backup',
-            'transfer', 'duplicate', 'organize', 'sort', 'edit', 'open',
-            'vim', 'nano', 'editor'
-        ]
-        
-        # K8s command patterns to detect
-        self.k8s_patterns = [
-            r'^kubectl\s+',  # Starts with "kubectl "
-            r'^kubectl$',    # Just "kubectl"
-            # Common k8s commands without "kubectl" prefix
-            r'^get\s+',      # get resources
-            r'^describe\s+', # describe resources
-            r'^apply\s+',    # apply yaml
-            r'^delete\s+',   # delete resources
-            r'^scale\s+',    # scale deployments
-            r'^port-forward\s+', # port forward
-            r'^logs\s+',     # get logs
-            r'^exec\s+',     # exec into pods
-            r'^cluster-info$', # cluster info
-            r'^top\s+',      # resource usage
-            r'^events$',     # get events
-            r'^config\s+',   # config operations
-            r'^context\s+',  # context operations
-            r'^namespace\s+', # namespace operations
-        ]
-        self.k8s_command = re.compile('|'.join(self.k8s_patterns), re.IGNORECASE)
-        
-        # Docker command patterns to detect
-        self.docker_patterns = [
-            r'^docker\s+',   # Starts with "docker "
-            r'^docker$',     # Just "docker"
-            r'^container\s+', # Container operations
-            r'^image\s+',    # Image operations
-            r'^build\s+',    # Build operations
-            r'^run\s+',      # Run operations
-            r'^stop\s+',     # Stop operations
-            r'^start\s+',    # Start operations
-            r'^rm\s+',       # Remove operations
-            r'^ps\s*$',      # List containers
-            r'^exec\s+',     # Execute in container
-            r'^logs\s+',     # Container logs
-        ]
-        self.docker_command = re.compile('|'.join(self.docker_patterns), re.IGNORECASE)
-        
-        # Additional keywords that might indicate k8s operations
-        self.k8s_keywords = [
-            'pod', 'pods', 'deployment', 'deployments', 'service', 'services',
-            'namespace', 'namespaces', 'node', 'nodes', 'cluster', 'k8s',
-            'k8s', 'kubectl', 'replica', 'replicas',
-            'scale', 'scaling', 'port-forward', 'port forward', 'logs', 'exec',
-            'describe', 'apply', 'delete', 'get', 'top', 'events', 'config',
-            'context', 'namespace', 'ingress', 'configmap', 'secret', 'pv', 'pvc'
-        ]
-        
-        # Additional keywords that might indicate Docker operations
-        self.docker_keywords = [
-            'docker', 'container', 'containers', 'image', 'images', 'build',
-            'run', 'stop', 'start', 'rm', 'ps', 'exec', 'logs', 'volume',
-            'volumes', 'network', 'networks', 'compose', 'stack', 'service',
-            'swarm', 'registry', 'hub', 'tag', 'push', 'pull', 'inspect'
-        ]
-        
-        # Compound command patterns
-        self.compound_patterns = [
-            r'commit\s+and\s+push',
-            r'commit\s*&\s*push',
-            r'add\s+and\s+commit',
-            r'add\s*&\s*commit',
-            r'add\s+commit\s+push',
-            r'add\s+commit\s*&\s*push',
-        ]
-        
-    
-
+        # Initialize LLM for task breakdown if available
+        self._initialize_llm()
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
-        """Check if the input contains a git command or file operation."""
+        """Check if the input contains a complex task that needs breakdown."""
         messages = state.get("messages", [])
         if not messages:
-            self._debug_print("No messages in state")
+            self._debug_print("router: No messages in state")
             return False
         
         # Get the latest user message
         latest_message = messages[-1]
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content.lower()
-            self._debug_print(f"Checking content: {content}")
+            self._debug_print(f"router: Checking content: {content}")
             
-            # Check for exact git command patterns
-            if self.git_command.search(content):
-                self._debug_print(f"Found git command pattern in: {content}")
+            # Check for complex tasks that need breakdown
+            if self._is_complex_task(content):
+                self._debug_print(f"router: Found complex task pattern in: {content}")
                 return True
             
-            # Check for exact file operation patterns
-            if self.file_command.search(content):
-                self._debug_print(f"Found file operation pattern in: {content}")
+            self._debug_print(f"router: No complex task patterns found in: {content}")
+        
+        return False
+    
+    def _is_complex_task(self, content: str) -> bool:
+        """Check if the content represents a complex task that needs breakdown."""
+        content_lower = content.lower()
+        
+        # Check for multi-step indicators
+        multi_step_indicators = [
+            r'first\s+.*?then',           # first X then Y
+            r'step\s+\d+',                # step 1, step 2, etc.
+            r'phase\s+\d+',               # phase 1, phase 2, etc.
+            r'stage\s+\d+',               # stage 1, stage 2, etc.
+            r'and\s+then',                # and then
+            r'after\s+.*?do',             # after X do Y
+            r'before\s+.*?do',            # before X do Y
+            r'while\s+.*?also',           # while X also Y
+            r'along\s+with',              # along with
+            r'in\s+addition\s+to',        # in addition to
+            r'as\s+well\s+as',            # as well as
+        ]
+        
+        for indicator in multi_step_indicators:
+            if re.search(indicator, content_lower):
+                self._debug_print(f"router: Found multi-step indicator '{indicator}' in: {content}")
                 return True
-            
-            # Check for exact k8s command patterns
-            if self.k8s_command.search(content):
-                self._debug_print(f"Found k8s command pattern in: {content}")
-                return True
-            
-            # Check for exact Docker command patterns
-            if self.docker_command.search(content):
-                self._debug_print(f"Found Docker command pattern in: {content}")
-                return True
-            
-            # Check for compound commands
-            for pattern in self.compound_patterns:
-                if re.search(pattern, content):
-                    self._debug_print(f"Found compound command pattern '{pattern}' in: {content}")
-                    return True
-            
-            # Check for git-related keywords (using word boundaries to avoid substring matches)
-            for keyword in self.git_keywords:
-                # Use word boundaries to avoid matching substrings
-                pattern = r'\b' + re.escape(keyword) + r'\b'
-                if re.search(pattern, content, re.IGNORECASE):
-                    self._debug_print(f"Found git keyword '{keyword}' in: {content}")
-                    return True
-            
-            # Check for file-related keywords (using word boundaries to avoid substring matches)
-            for keyword in self.file_keywords:
-                # Use word boundaries to avoid matching substrings
-                pattern = r'\b' + re.escape(keyword) + r'\b'
-                if re.search(pattern, content, re.IGNORECASE):
-                    self._debug_print(f"Found file keyword '{keyword}' in: {content}")
-                    return True
-            
-            # Check for k8s-related keywords (using word boundaries to avoid substring matches)
-            for keyword in self.k8s_keywords:
-                # Use word boundaries to avoid matching substrings like "top" in "stop"
-                pattern = r'\b' + re.escape(keyword) + r'\b'
-                if re.search(pattern, content, re.IGNORECASE):
-                    self._debug_print(f"Found k8s keyword '{keyword}' in: {content}")
-                    return True
-            
-            # Check for Docker-related keywords
-            for keyword in self.docker_keywords:
-                if keyword in content:
-                    return True
-            
-            self._debug_print(f"No git, file, k8s, or Docker patterns or keywords found in: {content}")
         
         return False
     
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Route git commands and file operations to appropriate agents."""
+        """Route complex tasks to task breakdown or handle as regular commands."""
         messages = state.get("messages", [])
         latest_message = messages[-1]
         
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
             
-            # Check if this is a k8s command (prioritize over git to avoid conflicts)
-            if self._is_k8s_command(content):
-                self._debug_print(f"🔀 Routing to K8S_AGENT: {content}")
-                # Route to k8s agent
-                return self._route_to_k8s_agent(state, content)
-            # Check if this is a Docker command
-            elif self._is_docker_command(content):
-                self._debug_print(f"🔀 Routing to DOCKER_AGENT: {content}")
-                # Route to Docker agent
-                return self._route_to_docker_agent(state, content)
-            # Check if this is a git command
-            elif self._is_git_command(content):
-                self._debug_print(f"🔀 Routing to GIT_AGENT: {content}")
-                # Route to git agent
-                return self._route_to_git_agent(state, content)
-            # Check if this is a file operation
-            elif self._is_file_operation(content):
-                self._debug_print(f"🔀 Routing to FILE_AGENT: {content}")
-                # Route to file agent
-                return self._route_to_file_agent(state, content)
+            # Check if this is a complex task that needs breakdown
+            if self._is_complex_task(content):
+                self._debug_print(f"router: 🔀 Breaking down complex task: {content}")
+                return self._break_down_task(state, content)
             else:
-                self._debug_print(f"🔀 Routing to REGULAR_COMMAND_HANDLER: {content}")
+                self._debug_print(f"router: 🔀 Routing to REGULAR_COMMAND_HANDLER: {content}")
                 # Handle as regular command
                 return self._handle_regular_command(state, content)
         
-        self._debug_print("No HumanMessage found, returning current state")
+        self._debug_print("router: No HumanMessage found, returning current state")
         return state
     
-    def _is_git_command(self, content: str) -> bool:
-        """Check if the content is a git command."""
-        content_lower = content.lower()
+    def _break_down_task(self, state: Dict[str, Any], task: str) -> Dict[str, Any]:
+        """Break down a complex task into steps and determine appropriate agents."""
+        self._debug_print(f"router: Breaking down task: {task}")
         
-        # Check for exact git command patterns
-        if self.git_command.search(content_lower):
-            self._debug_print(f"Found exact git command pattern in: {content}")
-            return True
+        # Use LLM for intelligent task breakdown
+        if self.llm:
+            try:
+                breakdown = self._llm_task_breakdown(task)
+                if breakdown:
+                    return self._create_task_breakdown_state(state, task, breakdown)
+            except Exception as e:
+                self._debug_print(f"router: LLM task breakdown failed: {e}")
         
-        # Check for compound commands
-        for pattern in self.compound_patterns:
-            if re.search(pattern, content_lower):
-                self._debug_print(f"Found compound command pattern '{pattern}' in: {content}")
-                return True
-        
-        # Check for git-related keywords (using word boundaries to avoid substring matches)
-        for keyword in self.git_keywords:
-            # Use word boundaries to avoid matching substrings
-            pattern = r'\b' + re.escape(keyword) + r'\b'
-            if re.search(pattern, content_lower):
-                self._debug_print(f"Found git keyword '{keyword}' in: {content}")
-                return True
-        
-        return False
+        # If LLM is not available or fails, create a simple fallback
+        fallback_breakdown = [
+            {"step": 1, "description": "Execute task", "agent": "regular_command", "command": task}
+        ]
+        return self._create_task_breakdown_state(state, task, fallback_breakdown)
     
-    def _is_file_operation(self, content: str) -> bool:
-        """Check if the content is a file operation."""
-        content_lower = content.lower()
-        
-        # Check for exact file operation patterns
-        if self.file_command.search(content_lower):
-            self._debug_print(f"Found exact file operation pattern in: {content}")
-            return True
-        
-        # Check for file-related keywords (using word boundaries to avoid substring matches)
-        for keyword in self.file_keywords:
-            # Use word boundaries to avoid matching substrings
-            pattern = r'\b' + re.escape(keyword) + r'\b'
-            if re.search(pattern, content_lower):
-                self._debug_print(f"Found file keyword '{keyword}' in: {content}")
-                return True
-        
-        self._debug_print(f"No file operation patterns found in: {content}")
-        return False
-    
-    def _is_k8s_command(self, content: str) -> bool:
-        """Check if the content is a k8s command."""
-        content_lower = content.lower()
-        
-        # Check for exact k8s command patterns
-        if self.k8s_command.search(content_lower):
-            self._debug_print(f"Found exact k8s command pattern in: {content}")
-            return True
-        
-        # Check for k8s-related keywords (using word boundaries to avoid substring matches)
-        for keyword in self.k8s_keywords:
-            # Use word boundaries to avoid matching substrings like "top" in "stop"
-            pattern = r'\b' + re.escape(keyword) + r'\b'
-            if re.search(pattern, content_lower):
-                self._debug_print(f"Found k8s keyword '{keyword}' in: {content}")
-                return True
-        
-        return False
-    
-    def _is_docker_command(self, content: str) -> bool:
-        """Check if the content is a Docker command."""
-        content_lower = content.lower()
-        
-        # Check for exact Docker command patterns
-        if self.docker_command.search(content_lower):
-            self._debug_print(f"Found exact Docker command pattern in: {content}")
-            return True
-        
-        # Check for Docker-related keywords
-        for keyword in self.docker_keywords:
-            if keyword in content_lower:
-                return True
-        
-        self._debug_print(f"No Docker operation patterns found in: {content}")
-        return False
-    
-    def _route_to_git_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Route the command to the git agent."""
-        # Add a message indicating routing to git agent
-        messages = state.get("messages", [])
-        messages.append(AIMessage(content=f"Routing git command: {command}"))
-        
-        # Normalize the command to include "git" prefix if not present
-        normalized_command = self._normalize_git_command(command)
-        self._debug_print(f"Normalized command: {command} -> {normalized_command}")
-        
-        return {
-            **state,
-            "messages": messages,
-            "routed_to": "git_agent",
-            "last_command": normalized_command
-        }
-    
-    def _route_to_file_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Route the command to the file agent."""
-        messages = state.get("messages", [])
-        messages.append(AIMessage(content=f"Routing file operation: {command}"))
-        
-        return {
-            **state,
-            "messages": messages,
-            "routed_to": "file_agent",
-            "last_command": command
-        }
-    
-    def _route_to_k8s_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Route the command to the k8s agent."""
-        messages = state.get("messages", [])
-        messages.append(AIMessage(content=f"Routing k8s command: {command}"))
-        
-        return {
-            **state,
-            "messages": messages,
-            "routed_to": "k8s_agent",
-            "last_command": command
-        }
-    
-    def _route_to_docker_agent(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Route the command to the Docker agent."""
-        messages = state.get("messages", [])
-        messages.append(AIMessage(content=f"Routing Docker command: {command}"))
-        
-        return {
-            **state,
-            "messages": messages,
-            "routed_to": "docker_agent",
-            "last_command": command
-        }
-    
-    def _normalize_git_command(self, command: str) -> str:
-        """Normalize git command to include 'git' prefix if not present."""
-        command_lower = command.lower().strip()
-        
-        # If it already starts with "git", return as is
-        if command_lower.startswith("git"):
-            self._debug_print(f"Command already has git prefix: {command}")
-            return command
-        
-        # Check for compound commands first
-        compound_commands = {
-            r'commit\s+and\s+push': 'git add . && git commit -m "Auto-commit" && git push',
-            r'commit\s*&\s*push': 'git add . && git commit -m "Auto-commit" && git push',
-            r'add\s+and\s+commit': 'git add . && git commit -m "Auto-commit"',
-            r'add\s*&\s*commit': 'git add . && git commit -m "Auto-commit"',
-            r'add\s+commit\s+push': 'git add . && git commit -m "Auto-commit" && git push',
-            r'add\s+commit\s*&\s*push': 'git add . && git commit -m "Auto-commit" && git push',
-        }
-        
-        for pattern, replacement in compound_commands.items():
-            if re.search(pattern, command_lower):
-                self._debug_print(f"Found compound command pattern '{pattern}', replacing with: {replacement}")
-                return replacement
-        
-        # Map common git commands to their full form
-        git_commands = {
-            'commit': 'commit -m "Auto-commit"',
-            'push': 'push',
-            'pull': 'pull',
-            'status': 'status',
-            'add': 'add .',
-            'branch': 'branch',
-            'checkout': 'checkout',
-            'merge': 'merge',
-            'log': 'log',
-            'diff': 'diff',
-            'stash': 'stash',
-            'reset': 'reset',
-            'clone': 'clone',
-            'init': 'init',
-            'remote': 'remote',
-            'fetch': 'fetch',
-            'tag': 'tag',
-            'rebase': 'rebase',
-            'cherry-pick': 'cherry-pick'
-        }
-        
-        # Check if it's a known git command
-        for cmd, default in git_commands.items():
-            if command_lower.startswith(cmd):
-                # Handle commands with arguments
-                if command_lower == cmd:
-                    result = f"git {default}"
-                    self._debug_print(f"Found git command '{cmd}', using default: {result}")
-                    return result
+    def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
+        """Use LLM to intelligently break down a task into steps."""
+        system_prompt = """You are a task analysis expert. Given a complex task, break it down into logical steps and assign the most appropriate agent for each step.
+
+Available agents:
+- git_agent: For git operations (commit, push, pull, branch, etc.)
+- file_agent: For file operations (move, copy, delete, edit, etc.)
+- k8s_agent: For Kubernetes operations (pods, deployments, services, etc.)
+- docker_agent: For Docker operations (containers, images, build, etc.)
+- regular_command: For system commands and other operations
+
+For each step, provide:
+1. A clear description of what needs to be done
+2. The most appropriate agent to handle it
+3. Any specific commands or actions needed
+
+Return the breakdown as a JSON list of objects with keys: "step", "description", "agent", "command".
+
+Example:
+[
+  {
+    "step": 1,
+    "description": "Check current git status",
+    "agent": "git_agent",
+    "command": "git status"
+  },
+  {
+    "step": 2,
+    "description": "Create backup directory",
+    "agent": "file_agent", 
+    "command": "mkdir backup"
+  }
+]"""
+
+        try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Break down this task: {task}"}
+            ]
+            
+            response = self.llm.invoke(messages)
+            content = response.content.strip()
+            
+            # Try to extract JSON from the response
+            import json
+            # Look for JSON content between ```json and ``` markers
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # Try to find JSON array in the content
+                json_match = re.search(r'\[.*\]', content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
                 else:
-                    # Extract the command and its arguments
-                    args = command[len(cmd):].strip()
-                    result = f"git {cmd} {args}"
-                    self._debug_print(f"Found git command '{cmd}' with args '{args}': {result}")
-                    return result
+                    json_str = content
+            
+            breakdown = json.loads(json_str)
+            self._debug_print(f"router: LLM breakdown successful: {len(breakdown)} steps")
+            return breakdown
+            
+        except Exception as e:
+            self._debug_print(f"router: LLM breakdown failed: {e}")
+            return []
+    
+    def _create_task_breakdown_state(self, state: Dict[str, Any], task: str, breakdown: List[Dict[str, str]]) -> Dict[str, Any]:
+        """Create state with task breakdown information."""
+        messages = state.get("messages", [])
         
-        # If not recognized, just add "git" prefix
-        result = f"git {command}"
-        self._debug_print(f"Command not recognized, adding git prefix: {result}")
-        return result
+        # Create breakdown message
+        breakdown_text = f"📋 Task Breakdown for: {task}\n\n"
+        for step_info in breakdown:
+            breakdown_text += f"Step {step_info['step']}: {step_info['description']}\n"
+            breakdown_text += f"  Agent: {step_info['agent']}\n"
+            breakdown_text += f"  Command: {step_info['command']}\n\n"
+        
+        breakdown_text += "🔄 Starting execution of first step..."
+        messages.append(AIMessage(content=breakdown_text))
+        
+        # Debug output: Print task steps
+        if self.debug:
+            self._debug_print(f"📋 Task Breakdown for: {task}")
+            for step_info in breakdown:
+                self._debug_print(f"  Step {step_info['step']}: {step_info['description']}")
+                self._debug_print(f"    Agent: {step_info['agent']}")
+                self._debug_print(f"    Command: {step_info['command']}")
+            self._debug_print(f"Total steps: {len(breakdown)}")
+        
+        # Add breakdown to state
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": "task_breakdown",
+            "last_command": task,
+            "task_breakdown": breakdown,
+            "current_step": 0,
+            "total_steps": len(breakdown)
+        }
     
     def _handle_regular_command(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
         """Handle non-git and non-file commands."""
