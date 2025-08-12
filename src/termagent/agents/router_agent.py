@@ -153,7 +153,9 @@ class RouterAgent(BaseAgent):
     
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
         """Use LLM to intelligently break down a task into steps."""
-        system_prompt = """You are a task analysis expert. Given a task, break it down into logical steps and assign the most appropriate agent for each step.
+        system_prompt = """You are a task analysis expert. Given a task, break it down into the MINIMAL number of logical steps and assign the most appropriate agent for each step.
+
+IMPORTANT: Use the FEWEST possible steps to accomplish the task. Combine related operations into single steps when possible. Only create separate steps when they are truly sequential dependencies.
 
 Available agents:
 - git_agent: For git operations (commit, push, pull, branch, etc.)
@@ -169,19 +171,13 @@ For each step, provide:
 
 Return the breakdown as a JSON list of objects with keys: "step", "description", "agent", "command".
 
-Example:
+Example (minimal steps):
 [
   {
     "step": 1,
-    "description": "Check current git status",
+    "description": "Check git status and create backup directory",
     "agent": "git_agent",
-    "command": "git status"
-  },
-  {
-    "step": 2,
-    "description": "Create backup directory",
-    "agent": "file_agent", 
-    "command": "mkdir backup"
+    "command": "git status && mkdir backup"
   }
 ]"""
 
