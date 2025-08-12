@@ -44,8 +44,9 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     workflow.add_node("file_agent", file_agent.process)
     workflow.add_node("k8s_agent", k8s_agent.process)
     workflow.add_node("docker_agent", docker_agent.process)
-    workflow.add_node("handle_regular", handle_regular_command)
+    workflow.add_node("handle_shell", handle_shell_command)
     workflow.add_node("handle_task_breakdown", handle_task_breakdown)
+    workflow.add_node("handle_direct_execution", handle_direct_execution)
     
     # Add conditional edges from router
     workflow.add_conditional_edges(
@@ -56,8 +57,9 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
             "file_agent": "file_agent",
             "k8s_agent": "k8s_agent",
             "docker_agent": "docker_agent",
-            "handle_regular": "handle_regular",
+            "handle_shell": "handle_shell",
             "handle_task_breakdown": "handle_task_breakdown",
+            "handle_direct_execution": "handle_direct_execution",
             END: END
         }
     )
@@ -67,8 +69,9 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     workflow.add_edge("file_agent", END)
     workflow.add_edge("k8s_agent", END)
     workflow.add_edge("docker_agent", END)
-    workflow.add_edge("handle_regular", END)
+    workflow.add_edge("handle_shell", END)
     workflow.add_edge("handle_task_breakdown", END)
+    workflow.add_edge("handle_direct_execution", END)
     
     # Set entry point
     workflow.set_entry_point("router")
@@ -92,25 +95,58 @@ def route_decision(state: AgentState) -> str:
         return "k8s_agent"
     elif state.get("routed_to") == "docker_agent":
         return "docker_agent"
-    elif state.get("routed_to") == "regular_command":
-        return "handle_regular"
+    elif state.get("routed_to") == "shell_command":
+        return "handle_shell"
     elif state.get("routed_to") == "task_breakdown":
         return "handle_task_breakdown"
+    elif state.get("routed_to") == "handle_direct_execution":
+        return "handle_direct_execution"
     else:
         return END
 
 
-def handle_regular_command(state: AgentState) -> AgentState:
-    """Handle regular (non-git) commands."""
+def handle_shell_command(state: AgentState) -> AgentState:
+    """Handle shell commands."""
     messages = state.get("messages", [])
     
     # Get the last command
     last_command = state.get("last_command", "Unknown command")
     
-    # Add a response for regular commands
+    # Add a response for shell commands
     messages.append(AIMessage(
-        content=f"Handled regular command: {last_command}. This command was not a git command."
+        content=f"Handled shell command: {last_command}. This command was not a git command."
     ))
+    
+    return {
+        **state,
+        "messages": messages
+    }
+
+
+def handle_direct_execution(state: AgentState) -> AgentState:
+    """Handle direct execution of known shell commands."""
+    messages = state.get("messages", [])
+    last_command = state.get("last_command", "Unknown command")
+    
+    # Import the shell command detector from router agent
+    from termagent.agents.router_agent import ShellCommandDetector
+    
+    # Create detector instance
+    detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+    
+    # Execute the command directly
+    success, output, return_code = detector.execute_command(last_command)
+    
+    if success:
+        result_message = f"✅ Command executed successfully: {last_command}\n"
+        if output and output != "✅ Command executed successfully":
+            result_message += f"Output:\n{output}"
+    else:
+        result_message = f"❌ Command execution failed: {last_command}\n"
+        if output:
+            result_message += f"Error: {output}"
+    
+    messages.append(AIMessage(content=result_message))
     
     return {
         **state,
@@ -130,7 +166,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         return {
             **state,
             "messages": messages,
-            "routed_to": "regular_command"
+            "routed_to": "shell_command"
         }
     
     # Execute all remaining steps in sequence
@@ -151,21 +187,105 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         messages.append(AIMessage(content=step_message))
         
         # Execute the command based on the agent type
-        if agent == "git_agent":
-            # For git commands, we'll simulate execution
-            result = f"✅ Git command executed: {command}"
-        elif agent == "file_agent":
-            # For file operations, we'll simulate execution
-            result = f"✅ File operation executed: {command}"
-        elif agent == "k8s_agent":
-            # For k8s commands, we'll simulate execution
-            result = f"✅ K8s command executed: {command}"
-        elif agent == "docker_agent":
-            # For Docker commands, we'll simulate execution
-            result = f"✅ Docker command executed: {command}"
-        else:
-            # For regular commands, we'll simulate execution
-            result = f"✅ Command executed: {command}"
+        try:
+            if agent == "git_agent":
+                # Execute git command
+                git_agent = GitAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+                git_state = {
+                    "messages": [HumanMessage(content=command)],
+                    "routed_to": "git_agent",
+                    "last_command": command
+                }
+                result_state = git_agent.process(git_state)
+                result = f"✅ Git command executed: {command}"
+                if result_state.get("git_result"):
+                    result += f"\nResult: {result_state['git_result']}"
+                
+            elif agent == "file_agent":
+                # Execute file operation
+                file_agent = FileAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+                file_state = {
+                    "messages": [HumanMessage(content=command)],
+                    "routed_to": "file_agent",
+                    "last_command": command
+                }
+                result_state = file_agent.process(file_state)
+                result = f"✅ File operation executed: {command}"
+                if result_state.get("file_result"):
+                    result += f"\nResult: {result_state['file_result']}"
+                
+            elif agent == "k8s_agent":
+                # Execute k8s command
+                k8s_agent = K8sAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+                k8s_state = {
+                    "messages": [HumanMessage(content=command)],
+                    "routed_to": "k8s_agent",
+                    "last_command": command
+                }
+                result_state = k8s_agent.process(k8s_state)
+                result = f"✅ K8s command executed: {command}"
+                if result_state.get("k8s_result"):
+                    result += f"\nResult: {result_state['k8s_result']}"
+                
+            elif agent == "docker_agent":
+                # Execute Docker command
+                docker_agent = DockerAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+                docker_state = {
+                    "messages": [HumanMessage(content=command)],
+                    "routed_to": "docker_agent",
+                    "last_command": command
+                }
+                result_state = docker_agent.process(docker_state)
+                result = f"✅ Docker command executed: {command}"
+                if result_state.get("docker_result"):
+                    result += f"\nResult: {result_state['docker_result']}"
+                
+            else:
+                # Execute shell command
+                import subprocess
+                import shlex
+                
+                try:
+                    # Check if command contains shell operators that require shell=True
+                    shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
+                    needs_shell = any(op in command for op in shell_operators)
+                    
+                    if needs_shell:
+                        # Use shell=True for commands with operators
+                        process_result = subprocess.run(
+                            command,
+                            shell=True,
+                            executable="/bin/zsh",
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                    else:
+                        # Use shlex.split for simple commands without operators
+                        args = shlex.split(command)
+                        process_result = subprocess.run(
+                            args, 
+                            capture_output=True, 
+                            text=True, 
+                            timeout=30
+                        )
+                    
+                    if process_result.returncode == 0:
+                        result = f"✅ Command executed: {command}"
+                        if process_result.stdout.strip():
+                            result += f"\nOutput: {process_result.stdout.strip()}"
+                    else:
+                        result = f"❌ Command failed: {command}"
+                        if process_result.stderr.strip():
+                            result += f"\nError: {process_result.stderr.strip()}"
+                        
+                except subprocess.TimeoutExpired:
+                    result = f"⏰ Command timed out: {command}"
+                except Exception as e:
+                    result = f"❌ Command execution error: {command}\nError: {str(e)}"
+            
+        except Exception as e:
+            result = f"❌ Failed to execute {agent} command: {command}\nError: {str(e)}"
         
         results.append(f"Step {step_num}: {result}")
         messages.append(AIMessage(content=result))
@@ -182,7 +302,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     return {
         **state,
         "messages": messages,
-        "routed_to": "regular_command",
+        "routed_to": "shell_command",
         "task_breakdown": None,
         "current_step": None,
         "total_steps": None
@@ -227,7 +347,7 @@ def create_agent_graph_with_should_handle() -> StateGraph:
     # Add nodes
     workflow.add_node("router", router_agent.process)
     workflow.add_node("git_agent", git_agent.process)
-    workflow.add_node("handle_regular", handle_regular_command)
+    workflow.add_node("handle_shell", handle_shell_command)
     
     # Add conditional edges from router using should_handle
     workflow.add_conditional_edges(
@@ -235,14 +355,14 @@ def create_agent_graph_with_should_handle() -> StateGraph:
         route_decision_with_should_handle,
         {
             "git_agent": "git_agent",
-            "handle_regular": "handle_regular",
+            "handle_shell": "handle_shell",
             END: END
         }
     )
     
     # Add edges to END
     workflow.add_edge("git_agent", END)
-    workflow.add_edge("handle_regular", END)
+    workflow.add_edge("handle_shell", END)
     
     # Set entry point
     workflow.set_entry_point("router")
@@ -258,9 +378,9 @@ def route_decision_with_should_handle(state: AgentState) -> str:
     # Check if git agent should handle this
     if git_agent.should_handle(state):
         return "git_agent"
-    # Check if router should handle this (for regular commands)
+    # Check if router should handle this (for shell commands)
     elif router_agent.should_handle(state):
-        return "handle_regular"
+        return "handle_shell"
     else:
         return END
 

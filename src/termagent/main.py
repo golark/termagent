@@ -25,6 +25,7 @@ def main():
         print("⏭️  NO-CONFIRM MODE ENABLED")
     print("=" * 40)
     print("This agent can:")
+    print("  • Execute basic shell commands directly (ls, pwd, mkdir, rm, cp)")
     print("  • Detect and route git commands to a specialized git agent")
     print("  • Detect and route file operations to a specialized file agent")
     print("  • Detect and route Docker commands to a specialized docker agent")

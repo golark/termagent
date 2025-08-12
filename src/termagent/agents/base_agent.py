@@ -228,7 +228,7 @@ class BaseAgent:
             # Task breakdown is complete
             return {
                 **state,
-                "routed_to": "regular_command",
+                "routed_to": "shell_command",
                 "task_breakdown": None,
                 "current_step": None,
                 "total_steps": None

@@ -1,7 +1,89 @@
 import re
-from typing import Dict, Any, List, Tuple
+import subprocess
+import shlex
+from typing import Dict, Any, List, Tuple, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
+
+
+class ShellCommandDetector:
+    """Detects and executes known shell commands directly."""
+    
+    # Basic shell commands that can be executed directly
+    KNOWN_COMMANDS = {'ls', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo'}
+    
+    def __init__(self, debug: bool = False, no_confirm: bool = False):
+        self.debug = debug
+        self.no_confirm = no_confirm
+    
+    def _debug_print(self, message: str):
+        """Print debug message if debug mode is enabled."""
+        if self.debug:
+            print(f"shell_detector | {message}")
+    
+    def is_known_command(self, command: str) -> bool:
+        """Check if the command is a known shell command."""
+        if not command or not command.strip():
+            return False
+        
+        parts = shlex.split(command.strip())
+        if not parts:
+            return False
+        
+        base_command = parts[0].lower()
+        return base_command in self.KNOWN_COMMANDS
+    
+    def execute_command(self, command: str, cwd: str = ".") -> Tuple[bool, str, Optional[int]]:
+        """Execute a shell command directly."""
+        if not self.is_known_command(command):
+            return False, "Command is not a known shell command", None
+        
+        self._debug_print(f"Executing shell command: {command}")
+        
+        try:
+            # Check if command contains shell operators that require shell=True
+            shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
+            needs_shell = any(op in command for op in shell_operators)
+            
+            if needs_shell:
+                # Use shell=True for commands with operators
+                process_result = subprocess.run(
+                    command,
+                    shell=True,
+                    executable="/bin/zsh",
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    timeout=30
+                )
+            else:
+                # Use shlex.split for simple commands without operators
+                args = shlex.split(command)
+                process_result = subprocess.run(
+                    args,
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    timeout=30
+                )
+            
+            if process_result.returncode == 0:
+                output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
+                return True, output, process_result.returncode
+            else:
+                error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
+                return False, f"❌ Command failed: {error_msg}", process_result.returncode
+                
+        except subprocess.TimeoutExpired:
+            return False, f"⏰ Command timed out after 30 seconds: {command}", None
+        except FileNotFoundError:
+            return False, f"❌ Command not found: {command}", None
+        except Exception as e:
+            return False, f"❌ Command execution error: {command}\nError: {str(e)}", None
+    
+    def should_execute_directly(self, command: str) -> bool:
+        """Determine if a command should be executed directly or routed to an agent."""
+        return self.is_known_command(command)
 
 
 class RouterAgent(BaseAgent):
@@ -9,6 +91,9 @@ class RouterAgent(BaseAgent):
     
     def __init__(self, debug: bool = False, no_confirm: bool = False):
         super().__init__("router_agent", debug, no_confirm)
+        
+        # Initialize shell command detector
+        self.shell_detector = ShellCommandDetector(debug=debug, no_confirm=no_confirm)
         
         # Initialize LLM for task breakdown if available
         self._initialize_llm()
@@ -46,6 +131,11 @@ class RouterAgent(BaseAgent):
         """Break down a task into steps and determine appropriate agents."""
         self._debug_print(f"router: Breaking down task: {task}")
         
+        # Check if this is a known shell command that should be executed directly
+        if self.shell_detector.should_execute_directly(task):
+            self._debug_print(f"router: Task '{task}' is a known shell command, routing to direct execution")
+            return self._create_direct_execution_state(state, task)
+        
         # Use LLM for intelligent task breakdown
         if self.llm:
             try:
@@ -57,7 +147,7 @@ class RouterAgent(BaseAgent):
         
         # If LLM is not available or fails, create a simple fallback
         fallback_breakdown = [
-            {"step": 1, "description": "Execute task", "agent": "regular_command", "command": task}
+            {"step": 1, "description": "Execute task", "agent": "shell_command", "command": task}
         ]
         return self._create_task_breakdown_state(state, task, fallback_breakdown)
     
@@ -70,7 +160,7 @@ Available agents:
 - file_agent: For file operations (move, copy, delete, edit, etc.)
 - k8s_agent: For Kubernetes operations (pods, deployments, services, etc.)
 - docker_agent: For Docker operations (containers, images, build, etc.)
-- regular_command: For system commands and other operations
+- shell_command: For system commands and other operations
 
 For each step, provide:
 1. A clear description of what needs to be done
@@ -158,4 +248,23 @@ Example:
             "task_breakdown": breakdown,
             "current_step": 0,
             "total_steps": len(breakdown)
+        }
+    
+    def _create_direct_execution_state(self, state: Dict[str, Any], task: str) -> Dict[str, Any]:
+        """Create state for direct shell command execution."""
+        messages = state.get("messages", [])
+        
+        # Create message indicating direct execution
+        execution_text = f"⚡ Direct execution: {task}\n"
+        execution_text += "This is a known shell command that will be executed directly."
+        messages.append(AIMessage(content=execution_text))
+        
+        self._debug_print(f"router: Created direct execution state for: {task}")
+        
+        # Add to state
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": "handle_direct_execution",
+            "last_command": task
         }
