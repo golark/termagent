@@ -5,7 +5,7 @@ from termagent.agents.base_agent import BaseAgent
 
 
 class RouterAgent(BaseAgent):
-    """Router agent that detects complex tasks and breaks them down into steps."""
+    """Router agent that breaks down tasks into steps."""
     
     def __init__(self, debug: bool = False, no_confirm: bool = False):
         super().__init__("router_agent", debug, no_confirm)
@@ -14,7 +14,7 @@ class RouterAgent(BaseAgent):
         self._initialize_llm()
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
-        """Check if the input contains a complex task that needs breakdown."""
+        """Check if there are messages to process."""
         messages = state.get("messages", [])
         if not messages:
             self._debug_print("router: No messages in state")
@@ -23,66 +23,27 @@ class RouterAgent(BaseAgent):
         # Get the latest user message
         latest_message = messages[-1]
         if isinstance(latest_message, HumanMessage):
-            content = latest_message.content.lower()
-            self._debug_print(f"router: Checking content: {content}")
-            
-            # Check for complex tasks that need breakdown
-            if self._is_complex_task(content):
-                self._debug_print(f"router: Found complex task pattern in: {content}")
-                return True
-            
-            self._debug_print(f"router: No complex task patterns found in: {content}")
-        
-        return False
-    
-    def _is_complex_task(self, content: str) -> bool:
-        """Check if the content represents a complex task that needs breakdown."""
-        content_lower = content.lower()
-        
-        # Check for multi-step indicators
-        multi_step_indicators = [
-            r'first\s+.*?then',           # first X then Y
-            r'step\s+\d+',                # step 1, step 2, etc.
-            r'phase\s+\d+',               # phase 1, phase 2, etc.
-            r'stage\s+\d+',               # stage 1, stage 2, etc.
-            r'and\s+then',                # and then
-            r'after\s+.*?do',             # after X do Y
-            r'before\s+.*?do',            # before X do Y
-            r'while\s+.*?also',           # while X also Y
-            r'along\s+with',              # along with
-            r'in\s+addition\s+to',        # in addition to
-            r'as\s+well\s+as',            # as well as
-        ]
-        
-        for indicator in multi_step_indicators:
-            if re.search(indicator, content_lower):
-                self._debug_print(f"router: Found multi-step indicator '{indicator}' in: {content}")
-                return True
+            self._debug_print(f"router: Found user message to process")
+            return True
         
         return False
     
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Route complex tasks to task breakdown or handle as regular commands."""
+        """Break down tasks into steps."""
         messages = state.get("messages", [])
         latest_message = messages[-1]
         
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
             
-            # Check if this is a complex task that needs breakdown
-            if self._is_complex_task(content):
-                self._debug_print(f"router: 🔀 Breaking down complex task: {content}")
-                return self._break_down_task(state, content)
-            else:
-                self._debug_print(f"router: 🔀 Routing to REGULAR_COMMAND_HANDLER: {content}")
-                # Handle as regular command
-                return self._handle_regular_command(state, content)
+            self._debug_print(f"router: 🔀 Breaking down task: {content}")
+            return self._break_down_task(state, content)
         
         self._debug_print("router: No HumanMessage found, returning current state")
         return state
     
     def _break_down_task(self, state: Dict[str, Any], task: str) -> Dict[str, Any]:
-        """Break down a complex task into steps and determine appropriate agents."""
+        """Break down a task into steps and determine appropriate agents."""
         self._debug_print(f"router: Breaking down task: {task}")
         
         # Use LLM for intelligent task breakdown
@@ -102,7 +63,7 @@ class RouterAgent(BaseAgent):
     
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
         """Use LLM to intelligently break down a task into steps."""
-        system_prompt = """You are a task analysis expert. Given a complex task, break it down into logical steps and assign the most appropriate agent for each step.
+        system_prompt = """You are a task analysis expert. Given a task, break it down into logical steps and assign the most appropriate agent for each step.
 
 Available agents:
 - git_agent: For git operations (commit, push, pull, branch, etc.)
@@ -197,17 +158,4 @@ Example:
             "task_breakdown": breakdown,
             "current_step": 0,
             "total_steps": len(breakdown)
-        }
-    
-    def _handle_regular_command(self, state: Dict[str, Any], command: str) -> Dict[str, Any]:
-        """Handle non-git and non-file commands."""
-        self._debug_print(f"Handling regular command: {command}")
-        messages = state.get("messages", [])
-        messages.append(AIMessage(content=f"Routing regular command: {command}"))
-        
-        return {
-            **state,
-            "messages": messages,
-            "routed_to": "regular_command",
-            "last_command": command
         }
