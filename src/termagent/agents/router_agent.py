@@ -86,6 +86,84 @@ class ShellCommandDetector:
         return self.is_known_command(command)
 
 
+class QueryDetector:
+    """Detects if user input is a question/informational query."""
+    
+    # Question indicators
+    QUESTION_WORDS = {
+        'what', 'how', 'why', 'when', 'where', 'which', 'who', 'whose', 'whom',
+        'can', 'could', 'would', 'should', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were'
+    }
+    
+    # Question patterns
+    QUESTION_PATTERNS = [
+        r'\?$',  # Ends with question mark
+        r'^(what|how|why|when|where|which|who|whose|whom)\s+',  # Starts with question word
+        r'\s+(what|how|why|when|where|which|who|whose|whom)\s+',  # Contains question word
+        r'^(can|could|would|should|will|do|does|did|is|are|was|were)\s+',  # Starts with modal/auxiliary
+        r'\s+(can|could|would|should|will|do|does|did|is|are|was|were)\s+',  # Contains modal/auxiliary
+    ]
+    
+    def __init__(self, debug: bool = False):
+        self.debug = debug
+    
+    def _debug_print(self, message: str):
+        """Print debug message if debug mode is enabled."""
+        if self.debug:
+            print(f"query_detector | {message}")
+    
+    def is_question(self, text: str) -> bool:
+        """Detect if the input is a question/informational query."""
+        if not text or not text.strip():
+            return False
+        
+        text_lower = text.lower().strip()
+        
+        # Check for question mark
+        if text.strip().endswith('?'):
+            self._debug_print(f"Detected question mark in: {text}")
+            return True
+        
+        # Check for question words at start
+        words = text_lower.split()
+        if words and words[0] in self.QUESTION_WORDS:
+            self._debug_print(f"Detected question word at start: {words[0]}")
+            return True
+        
+        # Check for question patterns
+        for pattern in self.QUESTION_PATTERNS:
+            if re.search(pattern, text_lower):
+                self._debug_print(f"Detected question pattern: {pattern}")
+                return True
+        
+        # Check for question words anywhere in the text
+        for word in self.QUESTION_WORDS:
+            if f' {word} ' in f' {text_lower} ':
+                self._debug_print(f"Detected question word: {word}")
+                return True
+        
+        self._debug_print(f"No question indicators found in: {text}")
+        return False
+    
+    def get_query_type(self, text: str) -> str:
+        """Determine the type of query to help with routing."""
+        text_lower = text.lower()
+        
+        # Kubernetes queries
+        if any(word in text_lower for word in ['cluster', 'pod', 'deployment', 'service', 'node', 'namespace', 'k8s', 'kubernetes']):
+            return 'k8s_query'
+        
+        # Git queries
+        if any(word in text_lower for word in ['git', 'commit', 'branch', 'remote', 'repository']):
+            return 'git_query'
+        
+        # File and system queries - route to shell handler
+        if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status']):
+            return 'shell_query'
+        
+        return 'general_query'
+
+
 class RouterAgent(BaseAgent):
     """Router agent that breaks down tasks into steps."""
     
@@ -94,6 +172,9 @@ class RouterAgent(BaseAgent):
         
         # Initialize shell command detector
         self.shell_detector = ShellCommandDetector(debug=debug, no_confirm=no_confirm)
+        
+        # Initialize query detector
+        self.query_detector = QueryDetector(debug=debug)
         
         # Initialize LLM for task breakdown if available
         self._initialize_llm()
@@ -131,6 +212,12 @@ class RouterAgent(BaseAgent):
         """Break down a task into steps and determine appropriate agents."""
         self._debug_print(f"router: Breaking down task: {task}")
         
+        # First, check if this is a question/informational query
+        if self.query_detector.is_question(task):
+            query_type = self.query_detector.get_query_type(task)
+            self._debug_print(f"router: Task '{task}' is a {query_type}, routing to query handler")
+            return self._create_query_state(state, task, query_type)
+        
         # Check if this is a known shell command that should be executed directly
         if self.shell_detector.should_execute_directly(task):
             self._debug_print(f"router: Task '{task}' is a known shell command, routing to direct execution")
@@ -159,9 +246,7 @@ IMPORTANT: Use the FEWEST possible steps to accomplish the task. Combine related
 
 Available agents:
 - git_agent: For git operations (commit, push, pull, branch, etc.)
-- file_agent: For file operations (move, copy, delete, edit, etc.)
 - k8s_agent: For Kubernetes operations (pods, deployments, services, etc.)
-- docker_agent: For Docker operations (containers, images, build, etc.)
 - shell_command: For system commands and other operations
 
 For each step, provide:
@@ -263,4 +348,36 @@ Example (minimal steps):
             "messages": messages,
             "routed_to": "handle_direct_execution",
             "last_command": task
+        }
+
+    def _create_query_state(self, state: Dict[str, Any], query: str, query_type: str) -> Dict[str, Any]:
+        """Create state for handling informational queries."""
+        messages = state.get("messages", [])
+        
+        # Create message indicating query handling
+        query_text = f"🔍 Query detected: {query}\n"
+        query_text += f"Type: {query_type}\n"
+        query_text += "Routing to appropriate agent for information gathering..."
+        messages.append(AIMessage(content=query_text))
+        
+        self._debug_print(f"router: Created query state for: {query} (type: {query_type})")
+        
+        # Route to appropriate agent based on query type
+        if query_type == 'k8s_query':
+            routed_to = "k8s_agent"
+        elif query_type == 'git_query':
+            routed_to = "git_agent"
+        elif query_type == 'shell_query':
+            routed_to = "handle_shell"
+        else:
+            routed_to = "handle_query"
+        
+        # Add to state
+        return {
+            **state,
+            "messages": messages,
+            "routed_to": routed_to,
+            "last_command": query,
+            "is_query": True,
+            "query_type": query_type
         }

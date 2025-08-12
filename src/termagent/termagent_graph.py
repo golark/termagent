@@ -4,9 +4,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from termagent.agents.router_agent import RouterAgent
 from termagent.agents.git_agent import GitAgent
-from termagent.agents.file_agent import FileAgent
 from termagent.agents.k8s_agent import K8sAgent
-from termagent.agents.docker_agent import DockerAgent
 
 
 class AgentState(TypedDict):
@@ -15,14 +13,15 @@ class AgentState(TypedDict):
     routed_to: str | None
     last_command: str | None
     git_result: str | None
-    file_result: str | None
     k8s_result: str | None
-    docker_result: str | None
     error: str | None
     # Task breakdown fields
     task_breakdown: List[Dict[str, str]] | None
     current_step: int | None
     total_steps: int | None
+    # Query handling fields
+    is_query: bool | None
+    query_type: str | None
 
 
 def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
@@ -31,9 +30,7 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     # Initialize agents
     router_agent = RouterAgent(debug=debug, no_confirm=no_confirm)
     git_agent = GitAgent(debug=debug, no_confirm=no_confirm)
-    file_agent = FileAgent(debug=debug, no_confirm=no_confirm)
     k8s_agent = K8sAgent(debug=debug, no_confirm=no_confirm)
-    docker_agent = DockerAgent(debug=debug, no_confirm=no_confirm)
     
     # Create the state graph
     workflow = StateGraph(AgentState)
@@ -41,12 +38,11 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     # Add nodes
     workflow.add_node("router", router_agent.process)
     workflow.add_node("git_agent", git_agent.process)
-    workflow.add_node("file_agent", file_agent.process)
     workflow.add_node("k8s_agent", k8s_agent.process)
-    workflow.add_node("docker_agent", docker_agent.process)
     workflow.add_node("handle_shell", handle_shell_command)
     workflow.add_node("handle_task_breakdown", handle_task_breakdown)
     workflow.add_node("handle_direct_execution", handle_direct_execution)
+    workflow.add_node("handle_query", handle_query)
     
     # Add conditional edges from router
     workflow.add_conditional_edges(
@@ -54,24 +50,22 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
         route_decision,
         {
             "git_agent": "git_agent",
-            "file_agent": "file_agent",
             "k8s_agent": "k8s_agent",
-            "docker_agent": "docker_agent",
             "handle_shell": "handle_shell",
             "handle_task_breakdown": "handle_task_breakdown",
             "handle_direct_execution": "handle_direct_execution",
+            "handle_query": "handle_query",
             END: END
         }
     )
     
     # Add edges to END
     workflow.add_edge("git_agent", END)
-    workflow.add_edge("file_agent", END)
     workflow.add_edge("k8s_agent", END)
-    workflow.add_edge("docker_agent", END)
     workflow.add_edge("handle_shell", END)
     workflow.add_edge("handle_task_breakdown", END)
     workflow.add_edge("handle_direct_execution", END)
+    workflow.add_edge("handle_query", END)
     
     # Set entry point
     workflow.set_entry_point("router")
@@ -86,15 +80,27 @@ def route_decision(state: AgentState) -> str:
         # Continue with task breakdown
         return "handle_task_breakdown"
     
+    # Check if this is a query that needs special handling
+    if state.get("is_query"):
+        query_type = state.get("query_type", "general_query")
+        
+        # Route queries to appropriate agents
+        if query_type == 'k8s_query':
+            return "k8s_agent"
+        elif query_type == 'docker_query':
+            return "docker_agent"
+        elif query_type == 'git_query':
+            return "git_agent"
+        elif query_type == 'shell_query':
+            return "handle_shell"
+        else:
+            return "handle_query"
+    
     # Regular routing logic
     if state.get("routed_to") == "git_agent":
         return "git_agent"
-    elif state.get("routed_to") == "file_agent":
-        return "file_agent"
     elif state.get("routed_to") == "k8s_agent":
         return "k8s_agent"
-    elif state.get("routed_to") == "docker_agent":
-        return "docker_agent"
     elif state.get("routed_to") == "shell_command":
         return "handle_shell"
     elif state.get("routed_to") == "task_breakdown":
@@ -106,16 +112,131 @@ def route_decision(state: AgentState) -> str:
 
 
 def handle_shell_command(state: AgentState) -> AgentState:
-    """Handle shell commands."""
+    """Handle shell commands and file-related queries."""
     messages = state.get("messages", [])
     
     # Get the last command
     last_command = state.get("last_command", "Unknown command")
+    is_query = state.get("is_query", False)
+    query_type = state.get("query_type", "")
     
-    # Add a response for shell commands
-    messages.append(AIMessage(
-        content=f"Handled shell command: {last_command}. This command was not a git command."
-    ))
+    if is_query and query_type == "shell_query":
+        # This is a file-related query, handle it intelligently
+        return _handle_shell_query(state, last_command)
+    else:
+        # Regular shell command
+        messages.append(AIMessage(
+            content=f"Handled shell command: {last_command}. This command was not a git command."
+        ))
+        
+        return {
+            **state,
+            "messages": messages
+        }
+
+
+def _handle_shell_query(state: AgentState, query: str) -> AgentState:
+    """Handle file and Docker queries by converting them to appropriate shell commands."""
+    messages = state.get("messages", [])
+    
+    # Convert common file queries to shell commands
+    query_lower = query.lower()
+    
+    if 'python' in query_lower and ('file' in query_lower or 'count' in query_lower):
+        # Handle "how many python files" type queries
+        command = "ls *.py | wc -l"
+        description = "Counting Python files in current directory"
+    elif 'file' in query_lower and ('count' in query_lower or 'how many' in query_lower):
+        # Handle general file counting queries
+        command = "ls -1 | wc -l"
+        description = "Counting files in current directory"
+    elif 'list' in query_lower and 'file' in query_lower:
+        # Handle "list files" type queries
+        command = "ls -la"
+        description = "Listing all files with details"
+    elif 'show' in query_lower and 'file' in query_lower:
+        # Handle "show files" type queries
+        command = "ls -la"
+        description = "Showing all files with details"
+    elif 'what' in query_lower and 'file' in query_lower:
+        # Handle "what files" type queries
+        command = "ls -la"
+        description = "Showing files in current directory"
+    elif 'directory' in query_lower or 'folder' in query_lower:
+        # Handle directory-related queries
+        command = "pwd && ls -la"
+        description = "Showing current directory and contents"
+    # Docker-related queries
+    elif 'docker' in query_lower and ('container' in query_lower or 'running' in query_lower):
+        # Handle Docker container queries
+        command = "docker ps"
+        description = "Showing running Docker containers"
+    elif 'docker' in query_lower and 'image' in query_lower:
+        # Handle Docker image queries
+        command = "docker images"
+        description = "Listing Docker images"
+    elif 'container' in query_lower and ('running' in query_lower or 'active' in query_lower):
+        # Handle container status queries
+        command = "docker ps -a"
+        description = "Showing all Docker containers"
+    elif 'image' in query_lower and ('count' in query_lower or 'how many' in query_lower):
+        # Handle image counting queries
+        command = "docker images | wc -l"
+        description = "Counting Docker images"
+    else:
+        # Generic file query - try to execute as-is
+        command = query
+        description = f"Executing query: {query}"
+    
+    # Create response message
+    response = f"🔍 Query: {query}\n"
+    response += f"📋 Converting to: {command}\n"
+    response += f"💡 Description: {description}\n\n"
+    
+    # Execute the command
+    try:
+        import subprocess
+        import shlex
+        
+        # Check if command contains shell operators that require shell=True
+        shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
+        needs_shell = any(op in command for op in shell_operators)
+        
+        if needs_shell:
+            # Use shell=True for commands with operators
+            process_result = subprocess.run(
+                command,
+                shell=True,
+                executable="/bin/zsh",
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        else:
+            # Use shlex.split for simple commands without operators
+            args = shlex.split(command)
+            process_result = subprocess.run(
+                args, 
+                capture_output=True, 
+                text=True, 
+                timeout=30
+            )
+        
+        if process_result.returncode == 0:
+            output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
+            response += f"✅ Result:\n{output}"
+        else:
+            error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
+            response += f"❌ Error:\n{error_msg}"
+            
+    except subprocess.TimeoutExpired:
+        response += f"⏰ Command timed out: {command}"
+    except FileNotFoundError:
+        response += f"❌ Command not found: {command}"
+    except Exception as e:
+        response += f"❌ Command execution error: {command}\nError: {str(e)}"
+    
+    messages.append(AIMessage(content=response))
     
     return {
         **state,
@@ -147,6 +268,31 @@ def handle_direct_execution(state: AgentState) -> AgentState:
             result_message += f"Error: {output}"
     
     messages.append(AIMessage(content=result_message))
+    
+    return {
+        **state,
+        "messages": messages
+    }
+
+
+def handle_query(state: AgentState) -> AgentState:
+    """Handle general queries that don't fit into specific agent categories."""
+    messages = state.get("messages", [])
+    query = state.get("last_command", "Unknown query")
+    query_type = state.get("query_type", "general_query")
+    
+    # Create response for general queries
+    response = f"🔍 Query: {query}\n"
+    response += f"📋 Type: {query_type}\n\n"
+    response += "This query doesn't fit into a specific agent category. "
+    response += "You can try rephrasing it as a more specific question or command.\n\n"
+    response += "Examples:\n"
+    response += "• For K8s: 'how many pods are running?' or 'get all deployments'\n"
+    response += "• For Docker: 'how many containers are running?' or 'list all images'\n"
+    response += "• For Git: 'what branch am I on?' or 'show git status'\n"
+    response += "• For files: 'what files are in this directory?' or 'ls -la'"
+    
+    messages.append(AIMessage(content=response))
     
     return {
         **state,
@@ -201,19 +347,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 if result_state.get("git_result"):
                     result += f"\nResult: {result_state['git_result']}"
                 
-            elif agent == "file_agent":
-                # Execute file operation
-                file_agent = FileAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
-                file_state = {
-                    "messages": [HumanMessage(content=command)],
-                    "routed_to": "file_agent",
-                    "last_command": command
-                }
-                result_state = file_agent.process(file_state)
-                result = f"✅ File operation executed: {command}"
-                if result_state.get("file_result"):
-                    result += f"\nResult: {result_state['file_result']}"
-                
             elif agent == "k8s_agent":
                 # Execute k8s command
                 k8s_agent = K8sAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
@@ -226,19 +359,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 result = f"✅ K8s command executed: {command}"
                 if result_state.get("k8s_result"):
                     result += f"\nResult: {result_state['k8s_result']}"
-                
-            elif agent == "docker_agent":
-                # Execute Docker command
-                docker_agent = DockerAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
-                docker_state = {
-                    "messages": [HumanMessage(content=command)],
-                    "routed_to": "docker_agent",
-                    "last_command": command
-                }
-                result_state = docker_agent.process(docker_state)
-                result = f"✅ Docker command executed: {command}"
-                if result_state.get("docker_result"):
-                    result += f"\nResult: {result_state['docker_result']}"
                 
             else:
                 # Execute shell command
@@ -317,13 +437,13 @@ def process_command(command: str, graph) -> Dict[str, Any]:
         routed_to=None,
         last_command=None,
         git_result=None,
-        file_result=None,
         k8s_result=None,
-        docker_result=None,
         error=None,
         task_breakdown=None,
         current_step=None,
-        total_steps=None
+        total_steps=None,
+        is_query=None,
+        query_type=None
     )
     
     # Run the graph with config
