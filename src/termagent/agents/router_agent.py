@@ -153,12 +153,8 @@ class QueryDetector:
         if any(word in text_lower for word in ['cluster', 'pod', 'deployment', 'service', 'node', 'namespace', 'k8s', 'kubernetes']):
             return 'k8s_query'
         
-        # Git queries
-        if any(word in text_lower for word in ['git', 'commit', 'branch', 'remote', 'repository']):
-            return 'git_query'
-        
-        # File and system queries - route to shell handler
-        if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status']):
+        # File, system, and git queries - route to shell handler
+        if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status', 'git', 'commit', 'branch', 'remote', 'repository']):
             return 'shell_query'
         
         return 'general_query'
@@ -245,9 +241,8 @@ class RouterAgent(BaseAgent):
 IMPORTANT: Use the FEWEST possible steps to accomplish the task. Combine related operations into single steps when possible. Only create separate steps when they are truly sequential dependencies.
 
 Available agents:
-- git_agent: For git operations (commit, push, pull, branch, etc.)
 - k8s_agent: For Kubernetes operations (pods, deployments, services, etc.)
-- shell_command: For system commands and other operations
+- shell_command: For system commands, git operations, file operations, and other operations
 
 For each step, provide:
 1. A clear description of what needs to be done
@@ -261,7 +256,7 @@ Example (minimal steps):
   {
     "step": 1,
     "description": "Check git status and create backup directory",
-    "agent": "git_agent",
+    "agent": "shell_command",
     "command": "git status && mkdir backup"
   }
 ]"""
@@ -365,8 +360,6 @@ Example (minimal steps):
         # Route to appropriate agent based on query type
         if query_type == 'k8s_query':
             routed_to = "k8s_agent"
-        elif query_type == 'git_query':
-            routed_to = "git_agent"
         elif query_type == 'shell_query':
             routed_to = "handle_shell"
         else:

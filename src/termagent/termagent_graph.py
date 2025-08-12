@@ -3,7 +3,6 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from termagent.agents.router_agent import RouterAgent
-from termagent.agents.git_agent import GitAgent
 from termagent.agents.k8s_agent import K8sAgent
 
 
@@ -12,7 +11,6 @@ class AgentState(TypedDict):
     messages: List[BaseMessage]
     routed_to: str | None
     last_command: str | None
-    git_result: str | None
     k8s_result: str | None
     error: str | None
     # Task breakdown fields
@@ -29,7 +27,6 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     
     # Initialize agents
     router_agent = RouterAgent(debug=debug, no_confirm=no_confirm)
-    git_agent = GitAgent(debug=debug, no_confirm=no_confirm)
     k8s_agent = K8sAgent(debug=debug, no_confirm=no_confirm)
     
     # Create the state graph
@@ -37,7 +34,6 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     
     # Add nodes
     workflow.add_node("router", router_agent.process)
-    workflow.add_node("git_agent", git_agent.process)
     workflow.add_node("k8s_agent", k8s_agent.process)
     workflow.add_node("handle_shell", handle_shell_command)
     workflow.add_node("handle_task_breakdown", handle_task_breakdown)
@@ -49,7 +45,6 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
         "router",
         route_decision,
         {
-            "git_agent": "git_agent",
             "k8s_agent": "k8s_agent",
             "handle_shell": "handle_shell",
             "handle_task_breakdown": "handle_task_breakdown",
@@ -60,7 +55,6 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     )
     
     # Add edges to END
-    workflow.add_edge("git_agent", END)
     workflow.add_edge("k8s_agent", END)
     workflow.add_edge("handle_shell", END)
     workflow.add_edge("handle_task_breakdown", END)
@@ -97,9 +91,7 @@ def route_decision(state: AgentState) -> str:
             return "handle_query"
     
     # Regular routing logic
-    if state.get("routed_to") == "git_agent":
-        return "git_agent"
-    elif state.get("routed_to") == "k8s_agent":
+    if state.get("routed_to") == "k8s_agent":
         return "k8s_agent"
     elif state.get("routed_to") == "shell_command":
         return "handle_shell"
@@ -139,54 +131,8 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
     """Handle file and Docker queries by converting them to appropriate shell commands."""
     messages = state.get("messages", [])
     
-    # Convert common file queries to shell commands
-    query_lower = query.lower()
-    
-    if 'python' in query_lower and ('file' in query_lower or 'count' in query_lower):
-        # Handle "how many python files" type queries
-        command = "ls *.py | wc -l"
-        description = "Counting Python files in current directory"
-    elif 'file' in query_lower and ('count' in query_lower or 'how many' in query_lower):
-        # Handle general file counting queries
-        command = "ls -1 | wc -l"
-        description = "Counting files in current directory"
-    elif 'list' in query_lower and 'file' in query_lower:
-        # Handle "list files" type queries
-        command = "ls -la"
-        description = "Listing all files with details"
-    elif 'show' in query_lower and 'file' in query_lower:
-        # Handle "show files" type queries
-        command = "ls -la"
-        description = "Showing all files with details"
-    elif 'what' in query_lower and 'file' in query_lower:
-        # Handle "what files" type queries
-        command = "ls -la"
-        description = "Showing files in current directory"
-    elif 'directory' in query_lower or 'folder' in query_lower:
-        # Handle directory-related queries
-        command = "pwd && ls -la"
-        description = "Showing current directory and contents"
-    # Docker-related queries
-    elif 'docker' in query_lower and ('container' in query_lower or 'running' in query_lower):
-        # Handle Docker container queries
-        command = "docker ps"
-        description = "Showing running Docker containers"
-    elif 'docker' in query_lower and 'image' in query_lower:
-        # Handle Docker image queries
-        command = "docker images"
-        description = "Listing Docker images"
-    elif 'container' in query_lower and ('running' in query_lower or 'active' in query_lower):
-        # Handle container status queries
-        command = "docker ps -a"
-        description = "Showing all Docker containers"
-    elif 'image' in query_lower and ('count' in query_lower or 'how many' in query_lower):
-        # Handle image counting queries
-        command = "docker images | wc -l"
-        description = "Counting Docker images"
-    else:
-        # Generic file query - try to execute as-is
-        command = query
-        description = f"Executing query: {query}"
+    # Use LLM to determine the appropriate command for the query
+    command, description, response_type = _analyze_query_with_llm(query)
     
     # Create response message
     response = f"🔍 Query: {query}\n"
@@ -224,7 +170,14 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
         
         if process_result.returncode == 0:
             output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
-            response += f"✅ Result:\n{output}"
+            
+            # Generate natural language response based on query type and output
+            natural_response = _generate_natural_response(query, response_type, output, command)
+            response += f"✅ Result:\n{natural_response}"
+            
+            # Add raw output for reference (in smaller text)
+            if output and output != "✅ Command executed successfully":
+                response += f"\n\n📊 Raw output:\n```\n{output}\n```"
         else:
             error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
             response += f"❌ Error:\n{error_msg}"
@@ -242,6 +195,190 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
         **state,
         "messages": messages
     }
+
+
+def _analyze_query_with_llm(query: str) -> tuple[str, str, str]:
+    """Use LLM to analyze a query and determine the appropriate command, description, and response type."""
+    
+    # System prompt for query analysis
+    system_prompt = """You are a shell command expert. Given a user query, determine the most appropriate shell command to answer it.
+
+Analyze the query and return a JSON response with:
+1. "command": The shell command to execute
+2. "description": A brief description of what the command does
+3. "response_type": The type of response expected (count, list, status, info, etc.)
+
+IMPORTANT:
+- Return ONLY valid JSON
+- Commands must work in zsh shell
+- Use zsh-compatible syntax
+- For counting queries, use commands that output numbers
+- For listing queries, use commands that show details
+- For status queries, use commands that show current state
+
+Examples:
+Query: "how many python files?"
+Response: {"command": "ls *.py | wc -l", "description": "Counting Python files in current directory", "response_type": "count"}
+
+Query: "what git branch am I on?"
+Response: {"command": "git branch --show-current", "description": "Showing current git branch", "response_type": "info"}
+
+Query: "show running containers"
+Response: {"command": "docker ps", "description": "Listing running Docker containers", "response_type": "list"}
+
+Analyze this query:"""
+
+    try:
+        # Try to use LLM if available
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("temp", debug=False)
+        
+        if base_agent._initialize_llm():
+            # Create messages for LLM
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query}
+            ]
+            
+            response = base_agent.llm.invoke(llm_messages)
+            content = response.content.strip()
+            
+            # Try to extract JSON from the response
+            import json
+            import re
+            
+            # Look for JSON content between ```json and ``` markers
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # Try to find JSON object in the content
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                else:
+                    json_str = content
+            
+            result = json.loads(json_str)
+            return result["command"], result["description"], result["response_type"]
+            
+        else:
+            # Fallback to basic pattern matching if LLM is not available
+            return _fallback_query_analysis(query)
+            
+    except Exception as e:
+        # Fallback to basic pattern matching if LLM fails
+        return _fallback_query_analysis(query)
+
+
+def _fallback_query_analysis(query: str) -> tuple[str, str, str]:
+    """Fallback method to analyze queries when LLM is not available."""
+    query_lower = query.lower()
+    
+    # Basic pattern matching as fallback
+    if 'python' in query_lower and ('file' in query_lower or 'count' in query_lower):
+        return "ls *.py | wc -l", "Counting Python files in current directory", "count"
+    elif 'file' in query_lower and ('count' in query_lower or 'how many' in query_lower):
+        return "ls -1 | wc -l", "Counting files in current directory", "count"
+    elif 'git' in query_lower and ('status' in query_lower or 'state' in query_lower):
+        return "git status", "Showing git repository status", "status"
+    elif 'git' in query_lower and 'branch' in query_lower:
+        return "git branch -a", "Listing all git branches", "list"
+    elif 'docker' in query_lower and 'container' in query_lower:
+        return "docker ps -a", "Showing Docker containers", "list"
+    elif 'docker' in query_lower and 'image' in query_lower:
+        return "docker images", "Listing Docker images", "list"
+    else:
+        # Generic fallback
+        return query, f"Executing query: {query}", "generic"
+
+
+def _generate_natural_response(query: str, response_type: str, output: str, command: str) -> str:
+    """Generate a natural language response based on the query type and command output."""
+    
+    if response_type == "count":
+        try:
+            # Extract the count number from output
+            count = int(output.strip())
+            if 'python' in query.lower():
+                return f"There are {count} Python files in this directory."
+            elif 'docker' in query.lower() and 'image' in query.lower():
+                return f"There are {count} Docker images available."
+            elif 'file' in query.lower():
+                return f"There are {count} files in this directory."
+            else:
+                return f"The count is {count}."
+        except (ValueError, AttributeError):
+            return f"The result is: {output}"
+    
+    elif response_type == "list":
+        if 'file' in query.lower():
+            # Count files from ls output
+            lines = output.strip().split('\n')
+            file_count = len([line for line in lines if line.strip() and not line.startswith('total')])
+            return f"There are {file_count} files in this directory:\n{output}"
+        else:
+            return f"Here are the items:\n{output}"
+    
+    elif response_type == "status":
+        if 'git' in query.lower():
+            return "Here's the current git status:\n" + output
+        else:
+            return f"Here's the current status:\n{output}"
+    
+    elif response_type == "info":
+        if 'git' in query.lower() and 'branch' in query.lower():
+            return "You are currently on the git branch: " + output
+        else:
+            return f"Here's the information:\n{output}"
+    
+    elif response_type == "docker_containers":
+        lines = output.strip().split('\n')
+        if len(lines) <= 1:  # Only header or empty
+            return "There are no Docker containers running."
+        else:
+            container_count = len(lines) - 1  # Subtract header line
+            if 'running' in query.lower():
+                return f"There are {container_count} Docker containers running."
+            else:
+                return f"There are {container_count} Docker containers (including stopped ones)."
+    
+    elif response_type == "docker_images":
+        lines = output.strip().split('\n')
+        if len(lines) <= 1:  # Only header or empty
+            return "There are no Docker images available."
+        else:
+            image_count = len(lines) - 1  # Subtract header line
+            return f"There are {image_count} Docker images available."
+    
+    elif response_type == "directory":
+        # Extract current directory and file count
+        lines = output.strip().split('\n')
+        if lines:
+            current_dir = lines[0].strip()
+            file_count = len([line for line in lines[1:] if line.strip() and not line.startswith('total')])
+            return f"You are currently in {current_dir} and there are {file_count} files/directories here."
+        else:
+            return f"Current directory information:\n{output}"
+    
+    elif response_type == "git_status":
+        return "Here's the current git status:\n" + output
+    
+    elif response_type == "git_branches":
+        return "Here are all git branches:\n" + output
+    
+    elif response_type == "git_commits":
+        return "Here are the recent git commits:\n" + output
+    
+    elif response_type == "git_remotes":
+        return "Here are the git remote repositories:\n" + output
+    
+    elif response_type == "git_current_branch":
+        return "You are currently on the git branch: " + output
+    
+    else:
+        # Generic response
+        return f"Here's the result:\n{output}"
 
 
 def handle_direct_execution(state: AgentState) -> AgentState:
@@ -334,20 +471,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         
         # Execute the command based on the agent type
         try:
-            if agent == "git_agent":
-                # Execute git command
-                git_agent = GitAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
-                git_state = {
-                    "messages": [HumanMessage(content=command)],
-                    "routed_to": "git_agent",
-                    "last_command": command
-                }
-                result_state = git_agent.process(git_state)
-                result = f"✅ Git command executed: {command}"
-                if result_state.get("git_result"):
-                    result += f"\nResult: {result_state['git_result']}"
-                
-            elif agent == "k8s_agent":
+            if agent == "k8s_agent":
                 # Execute k8s command
                 k8s_agent = K8sAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
                 k8s_state = {
@@ -436,7 +560,6 @@ def process_command(command: str, graph) -> Dict[str, Any]:
         messages=[HumanMessage(content=command)],
         routed_to=None,
         last_command=None,
-        git_result=None,
         k8s_result=None,
         error=None,
         task_breakdown=None,
@@ -459,14 +582,14 @@ def create_agent_graph_with_should_handle() -> StateGraph:
     
     # Initialize agents
     router_agent = RouterAgent()
-    git_agent = GitAgent()
+    k8s_agent = K8sAgent()
     
     # Create the state graph
     workflow = StateGraph(AgentState)
     
     # Add nodes
     workflow.add_node("router", router_agent.process)
-    workflow.add_node("git_agent", git_agent.process)
+    workflow.add_node("k8s_agent", k8s_agent.process)
     workflow.add_node("handle_shell", handle_shell_command)
     
     # Add conditional edges from router using should_handle
@@ -474,14 +597,14 @@ def create_agent_graph_with_should_handle() -> StateGraph:
         "router",
         route_decision_with_should_handle,
         {
-            "git_agent": "git_agent",
+            "k8s_agent": "k8s_agent",
             "handle_shell": "handle_shell",
             END: END
         }
     )
     
     # Add edges to END
-    workflow.add_edge("git_agent", END)
+    workflow.add_edge("k8s_agent", END)
     workflow.add_edge("handle_shell", END)
     
     # Set entry point
@@ -493,11 +616,11 @@ def create_agent_graph_with_should_handle() -> StateGraph:
 def route_decision_with_should_handle(state: AgentState) -> str:
     """Decide which node to route to based on should_handle methods."""
     router_agent = RouterAgent()
-    git_agent = GitAgent()
+    k8s_agent = K8sAgent()
     
-    # Check if git agent should handle this
-    if git_agent.should_handle(state):
-        return "git_agent"
+    # Check if k8s agent should handle this
+    if k8s_agent.should_handle(state):
+        return "k8s_agent"
     # Check if router should handle this (for shell commands)
     elif router_agent.should_handle(state):
         return "handle_shell"

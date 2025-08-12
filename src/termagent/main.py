@@ -26,7 +26,7 @@ def main():
     print("=" * 40)
     print("This agent can:")
     print("  • Execute basic shell commands directly (ls, pwd, mkdir, rm, cp)")
-    print("  • Detect and route git commands to a specialized git agent")
+    print("  • Handle git operations through shell commands")
     print("  • Handle file operations through shell commands")
     print("  • Handle Docker operations through shell commands")
     print("  • Detect and route Kubernetes commands to a specialized k8s agent")
