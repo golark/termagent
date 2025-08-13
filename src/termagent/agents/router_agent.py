@@ -4,164 +4,7 @@ import shlex
 from typing import Dict, Any, List, Tuple, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
-
-
-class ShellCommandDetector:
-    """Detects and executes known shell commands directly."""
-    
-    # Basic shell commands that can be executed directly with output capture
-    KNOWN_COMMANDS = {'ls', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo'}
-    
-    # Interactive text editors that need special handling (run in foreground, block until closed)
-    INTERACTIVE_EDITORS = {'vi', 'vim', 'emacs', 'nano'}
-    
-    # Interactive system commands that need special handling (run in foreground, block until closed)
-    INTERACTIVE_COMMANDS = {
-        # System monitoring
-        'top', 'htop', 'btop', 'bashtop', 'atop', 'glances',
-        # File viewing
-        'less', 'more', 'most',
-        # Network monitoring
-        'iftop', 'iotop', 'nethogs', 'nload', 'slurm', 'ttyplot',
-        # Documentation
-        'man', 'info',
-        # Disk usage
-        'ncdu',
-        # Fun/visual
-        'asciiquarium', 'cmatrix', 'hollywood',
-        # Development tools
-        'python', 'python3', 'node', 'nodejs', 'irb', 'pry', 'ghci', 'gdb', 'lldb'
-    }
-    
-    def __init__(self, debug: bool = False, no_confirm: bool = False):
-        self.debug = debug
-        self.no_confirm = no_confirm
-    
-    def _debug_print(self, message: str):
-        """Print debug message if debug mode is enabled."""
-        if self.debug:
-            print(f"shell_detector | {message}")
-    
-    def is_known_command(self, command: str) -> bool:
-        """Check if the command is a known shell command."""
-        if not command or not command.strip():
-            return False
-        
-        parts = shlex.split(command.strip())
-        if not parts:
-            return False
-        
-        base_command = parts[0].lower()
-        return base_command in self.KNOWN_COMMANDS or base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
-    
-    def execute_command(self, command: str, cwd: str = ".") -> Tuple[bool, str, Optional[int]]:
-        """Execute a shell command directly."""
-        if not self.is_known_command(command):
-            return False, "Command is not a known shell command", None
-        
-        self._debug_print(f"Executing shell command: {command}")
-        
-        # Check if this is an interactive command (editor or system command)
-        parts = shlex.split(command.strip())
-        base_command = parts[0].lower()
-        is_interactive = base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
-        
-        try:
-            if is_interactive:
-                # For interactive commands, start them in the foreground
-                if base_command in self.INTERACTIVE_EDITORS:
-                    command_type = "text editor"
-                    action = "editing"
-                else:
-                    command_type = "system command"
-                    action = "monitoring"
-                
-                self._debug_print(f"Starting interactive {command_type}: {command}")
-                # Note: This will block until the command is closed
-                process_result = subprocess.run(
-                    command,
-                    shell=True,
-                    executable="/bin/zsh",
-                    cwd=cwd
-                )
-                return True, f"✅ Interactive {command_type} {base_command} finished {action} (exit code: {process_result.returncode})", process_result.returncode
-            else:
-                # Regular command execution with output capture
-                # Check if command contains shell operators that require shell=True
-                shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-                needs_shell = any(op in command for op in shell_operators)
-                
-                if needs_shell:
-                    # Use shell=True for commands with operators
-                    process_result = subprocess.run(
-                        command,
-                        shell=True,
-                        executable="/bin/zsh",
-                        capture_output=True,
-                        text=True,
-                        cwd=cwd,
-                        timeout=30
-                    )
-                else:
-                    # Use shlex.split for simple commands without operators
-                    args = shlex.split(command)
-                    process_result = subprocess.run(
-                        args,
-                        capture_output=True,
-                        text=True,
-                        cwd=cwd,
-                        timeout=30
-                    )
-                
-                if process_result.returncode == 0:
-                    output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
-                    return True, output, process_result.returncode
-                else:
-                    error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
-                    return False, f"❌ Command failed: {error_msg}", process_result.returncode
-                
-        except subprocess.TimeoutExpired:
-            return False, f"⏰ Command timed out after 30 seconds: {command}", None
-        except FileNotFoundError:
-            return False, f"❌ Command not found: {command}", None
-        except Exception as e:
-            return False, f"❌ Command execution error: {command}\nError: {str(e)}", None
-    
-    def should_execute_directly(self, command: str) -> bool:
-        """Determine if a command should be executed directly or routed to an agent."""
-        return self.is_known_command(command)
-    
-    def is_interactive_command(self, command: str) -> bool:
-        """Check if a command is interactive (editor or system command)."""
-        if not command or not command.strip():
-            return False
-        
-        parts = shlex.split(command.strip())
-        if not parts:
-            return False
-        
-        base_command = parts[0].lower()
-        return base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
-    
-    def get_command_type(self, command: str) -> str:
-        """Get the type of command for better user feedback."""
-        if not command or not command.strip():
-            return "unknown"
-        
-        parts = shlex.split(command.strip())
-        if not parts:
-            return "unknown"
-        
-        base_command = parts[0].lower()
-        
-        if base_command in self.INTERACTIVE_EDITORS:
-            return "interactive_editor"
-        elif base_command in self.INTERACTIVE_COMMANDS:
-            return "interactive_command"
-        elif base_command in self.KNOWN_COMMANDS:
-            return "basic_command"
-        else:
-            return "unknown"
+from termagent.shell_detector import ShellCommandDetector
 
 
 class QueryDetector:
@@ -220,7 +63,6 @@ class QueryDetector:
                 self._debug_print(f"Detected question word: {word}")
                 return True
         
-        self._debug_print(f"No question indicators found in: {text}")
         return False
     
     def get_query_type(self, text: str) -> str:
@@ -253,13 +95,13 @@ class RouterAgent(BaseAgent):
         """Check if there are messages to process."""
         messages = state.get("messages", [])
         if not messages:
-            self._debug_print("router: No messages in state")
+            self._debug_print("No messages in state")
             return False
         
         # Get the latest user message
         latest_message = messages[-1]
         if isinstance(latest_message, HumanMessage):
-            self._debug_print(f"router: Found user message to process")
+            self._debug_print(f"Found user message to process")
             return True
         
         return False
@@ -272,33 +114,33 @@ class RouterAgent(BaseAgent):
         if isinstance(latest_message, HumanMessage):
             content = latest_message.content
             
-            self._debug_print(f"router: 🔀 Breaking down task: {content}")
             return self._break_down_task(state, content)
         
-        self._debug_print("router: No HumanMessage found, returning current state")
+        self._debug_print("No HumanMessage found, returning current state")
         return state
     
     def _break_down_task(self, state: Dict[str, Any], task: str) -> Dict[str, Any]:
         """Break down a task into steps and determine appropriate agents."""
-        self._debug_print(f"router: Breaking down task: {task}")
         
         # First, check if this is a question/informational query
         if self.query_detector.is_question(task):
             query_type = self.query_detector.get_query_type(task)
-            self._debug_print(f"router: Task '{task}' is a {query_type}, routing to query handler")
+            self._debug_print(f"Routing to query handler (type: {query_type})")
             return self._create_query_state(state, task, query_type)
         
         # Check if this is a known shell command that should be executed directly
         if self.shell_detector.should_execute_directly(task):
-            self._debug_print(f"router: Task '{task}' is a known shell command, routing to direct execution")
+            self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
         
         # Use LLM for intelligent task breakdown
+        self._debug_print(f"Attempting LLM task breakdown")
         breakdown = self._llm_task_breakdown(task)
         if breakdown:
+            self._debug_print(f"LLM breakdown successful, routing to task breakdown")
             return self._create_task_breakdown_state(state, task, breakdown)
         else:
-            self._debug_print(f"router: LLM breakdown failed, using direct execution")
+            self._debug_print(f"LLM breakdown failed, falling back to direct execution")
             return self._create_direct_execution_state(state, task)
     
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
@@ -389,11 +231,11 @@ Breakdown: [
                     json_str = content
             
             breakdown = json.loads(json_str)
-            self._debug_print(f"router: LLM breakdown successful: {len(breakdown)} steps")
+            self._debug_print(f"LLM breakdown successful: {len(breakdown)} steps")
             return breakdown
             
         except Exception as e:
-            self._debug_print(f"router: LLM breakdown failed: {e}")
+            self._debug_print(f"LLM breakdown failed: {e}")
             return []
     
     def _create_task_breakdown_state(self, state: Dict[str, Any], task: str, breakdown: List[Dict[str, str]]) -> Dict[str, Any]:
@@ -446,8 +288,6 @@ Breakdown: [
         execution_text += "This is a known shell command that will be executed directly."
         messages.append(AIMessage(content=execution_text))
         
-        self._debug_print(f"router: Created direct execution state for: {task}")
-        
         # Add to state
         return {
             **state,
@@ -466,7 +306,7 @@ Breakdown: [
         query_text += "Routing to appropriate agent for information gathering..."
         messages.append(AIMessage(content=query_text))
         
-        self._debug_print(f"router: Created query state for: {query} (type: {query_type})")
+        self._debug_print(f"Created query state for: {query} (type: {query_type})")
         
         # Route to appropriate agent based on query type
         if query_type == 'shell_query':

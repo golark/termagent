@@ -184,8 +184,6 @@ class InputHandler:
             # Add to history if not empty
             if user_input:
                 self.history.add_command(user_input)
-                if self.debug:
-                    print(f"📝 Added to history: {user_input}")
             
             return user_input
             

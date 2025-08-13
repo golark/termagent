@@ -52,8 +52,9 @@ def main():
         
         try:
             # Process the command
-            print(f"\n🔄 Processing: {args.oneshot}")
-            result = process_command(args.oneshot, graph)
+            if args.debug:
+                print(f"\n🔄 Processing: {args.oneshot}")
+            result = process_command(args.oneshot, graph, debug=args.debug, no_confirm=args.no_confirm)
             
             # Display the result
             messages = result.get("messages", [])
@@ -114,14 +115,12 @@ def main():
             elif command.lower() == 'stats':
                 input_handler.get_history_stats()
                 continue
-            elif command.lower().startswith('search '):
-                query = command[7:].strip()
-                input_handler.search_history(query)
-                continue
+
             
             # Process the command
-            print(f"\n🔄 Processing: {command}")
-            result = process_command(command, graph)
+            if args.debug:
+                print(f"\n🔄 Processing: {command}")
+            result = process_command(command, graph, debug=args.debug, no_confirm=args.no_confirm)
             
             # Display the result
             messages = result.get("messages", [])

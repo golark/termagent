@@ -18,6 +18,9 @@ class AgentState(TypedDict):
     # Query handling fields
     is_query: bool | None
     query_type: str | None
+    # Configuration fields
+    debug: bool | None
+    no_confirm: bool | None
 
 
 def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
@@ -350,8 +353,8 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     messages = state.get("messages", [])
     last_command = state.get("last_command", "Unknown command")
     
-    # Import the shell command detector from router agent
-    from termagent.agents.router_agent import ShellCommandDetector
+    # Import the shell command detector from its own module
+    from termagent.shell_detector import ShellCommandDetector
     
     # Create detector instance
     detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
@@ -360,9 +363,9 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     success, output, return_code = detector.execute_command(last_command)
     
     if success:
-        result_message = f"✅ Command executed successfully: {last_command}\n"
-        if output and output != "✅ Command executed successfully":
-            result_message += f"Output:\n{output}"
+        result_message = f"✅"
+        if output:
+            result_message += f"\n{output}"
     else:
         result_message = f"❌ Command execution failed: {last_command}\n"
         if output:
@@ -516,20 +519,21 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     }
 
 
-def process_command(command: str, graph) -> Dict[str, Any]:
+def process_command(command: str, graph, debug: bool = False, no_confirm: bool = False) -> Dict[str, Any]:
     """Process a command through the agent graph."""
     # Create initial state
     initial_state = AgentState(
         messages=[HumanMessage(content=command)],
         routed_to=None,
         last_command=None,
-        k8s_result=None,
         error=None,
         task_breakdown=None,
         current_step=None,
         total_steps=None,
         is_query=None,
-        query_type=None
+        query_type=None,
+        debug=debug,
+        no_confirm=no_confirm
     )
     
     # Run the graph with config
