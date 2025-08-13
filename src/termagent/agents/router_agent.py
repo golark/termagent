@@ -149,10 +149,6 @@ class QueryDetector:
         """Determine the type of query to help with routing."""
         text_lower = text.lower()
         
-        # Kubernetes queries
-        if any(word in text_lower for word in ['cluster', 'pod', 'deployment', 'service', 'node', 'namespace', 'k8s', 'kubernetes']):
-            return 'k8s_query'
-        
         # File, system, and git queries - route to shell handler
         if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status', 'git', 'commit', 'branch', 'remote', 'repository', 'permissions', 'attributes', 'owner', 'group']):
             return 'shell_query'
@@ -250,7 +246,6 @@ CRITICAL RULES:
 6. Only create separate steps when they are truly sequential dependencies
 
 Available agents:
-- k8s_agent: For Kubernetes operations (pods, deployments, services, etc.)
 - shell_command: For system commands, git operations, file operations, Docker, and other operations
 
 For each step, provide:
@@ -406,9 +401,7 @@ Breakdown: [
         self._debug_print(f"router: Created query state for: {query} (type: {query_type})")
         
         # Route to appropriate agent based on query type
-        if query_type == 'k8s_query':
-            routed_to = "k8s_agent"
-        elif query_type == 'shell_query':
+        if query_type == 'shell_query':
             routed_to = "handle_shell"
         else:
             routed_to = "handle_query"
@@ -547,30 +540,7 @@ Breakdown: [
                     "command": "ls -la"
                 }]
         
-        # Kubernetes operations
-        elif any(word in task_lower for word in ['k8s', 'kubernetes', 'pod', 'deployment', 'service']):
-            if 'list' in task_lower or 'show' in task_lower or 'get' in task_lower:
-                if 'pod' in task_lower:
-                    return [{
-                        "step": 1,
-                        "description": "List all pods",
-                        "agent": "k8s_agent",
-                        "command": "kubectl get pods"
-                    }]
-                elif 'deployment' in task_lower:
-                    return [{
-                        "step": 1,
-                        "description": "List all deployments",
-                        "agent": "k8s_agent",
-                        "command": "kubectl get deployments"
-                    }]
-                else:
-                    return [{
-                        "step": 1,
-                        "description": "List Kubernetes resources",
-                        "agent": "k8s_agent",
-                        "command": "kubectl get all"
-                    }]
+
         
         # Generic fallback - try to execute the task directly
         return [{
@@ -700,7 +670,7 @@ Breakdown: [
                         description = "Create and switch to new git branch"
             
             # Validate agent assignment
-            if agent not in ["shell_command", "k8s_agent"]:
+            if agent not in ["shell_command"]:
                 # Default to shell_command for unknown agents
                 agent = "shell_command"
             

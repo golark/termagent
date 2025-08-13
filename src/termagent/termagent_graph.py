@@ -3,7 +3,6 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from termagent.agents.router_agent import RouterAgent
-from termagent.agents.k8s_agent import K8sAgent
 
 
 class AgentState(TypedDict):
@@ -11,7 +10,6 @@ class AgentState(TypedDict):
     messages: List[BaseMessage]
     routed_to: str | None
     last_command: str | None
-    k8s_result: str | None
     error: str | None
     # Task breakdown fields
     task_breakdown: List[Dict[str, str]] | None
@@ -23,18 +21,16 @@ class AgentState(TypedDict):
 
 
 def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
-    """Create the main agent graph with router, git agent, and file agent."""
+    """Create the main agent graph with router and shell command handling."""
     
     # Initialize agents
     router_agent = RouterAgent(debug=debug, no_confirm=no_confirm)
-    k8s_agent = K8sAgent(debug=debug, no_confirm=no_confirm)
     
     # Create the state graph
     workflow = StateGraph(AgentState)
     
     # Add nodes
     workflow.add_node("router", router_agent.process)
-    workflow.add_node("k8s_agent", k8s_agent.process)
     workflow.add_node("handle_shell", handle_shell_command)
     workflow.add_node("handle_task_breakdown", handle_task_breakdown)
     workflow.add_node("handle_direct_execution", handle_direct_execution)
@@ -45,7 +41,6 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
         "router",
         route_decision,
         {
-            "k8s_agent": "k8s_agent",
             "handle_shell": "handle_shell",
             "handle_task_breakdown": "handle_task_breakdown",
             "handle_direct_execution": "handle_direct_execution",
@@ -55,7 +50,6 @@ def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGr
     )
     
     # Add edges to END
-    workflow.add_edge("k8s_agent", END)
     workflow.add_edge("handle_shell", END)
     workflow.add_edge("handle_task_breakdown", END)
     workflow.add_edge("handle_direct_execution", END)
@@ -79,21 +73,13 @@ def route_decision(state: AgentState) -> str:
         query_type = state.get("query_type", "general_query")
         
         # Route queries to appropriate agents
-        if query_type == 'k8s_query':
-            return "k8s_agent"
-        elif query_type == 'docker_query':
-            return "docker_agent"
-        elif query_type == 'git_query':
-            return "git_agent"
-        elif query_type == 'shell_query':
+        if query_type == 'shell_query':
             return "handle_shell"
         else:
             return "handle_query"
     
     # Regular routing logic
-    if state.get("routed_to") == "k8s_agent":
-        return "k8s_agent"
-    elif state.get("routed_to") == "shell_command":
+    if state.get("routed_to") == "shell_command":
         return "handle_shell"
     elif state.get("routed_to") == "task_breakdown":
         return "handle_task_breakdown"
@@ -469,67 +455,48 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         
         messages.append(AIMessage(content=step_message))
         
-        # Execute the command based on the agent type
+        # Execute the command (all commands are now shell commands)
         try:
-            if agent == "k8s_agent":
-                # Execute k8s command
-                k8s_agent = K8sAgent(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
-                k8s_state = {
-                    "messages": [HumanMessage(content=command)],
-                    "routed_to": "k8s_agent",
-                    "last_command": command
-                }
-                result_state = k8s_agent.process(k8s_state)
-                result = f"✅ K8s command executed: {command}"
-                if result_state.get("k8s_result"):
-                    result += f"\nResult: {result_state['k8s_result']}"
-                
-            else:
-                # Execute shell command
-                import subprocess
-                import shlex
-                
-                try:
-                    # Check if command contains shell operators that require shell=True
-                    shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-                    needs_shell = any(op in command for op in shell_operators)
-                    
-                    if needs_shell:
-                        # Use shell=True for commands with operators
-                        process_result = subprocess.run(
-                            command,
-                            shell=True,
-                            executable="/bin/zsh",
-                            capture_output=True,
-                            text=True,
-                            timeout=30
-                        )
-                    else:
-                        # Use shlex.split for simple commands without operators
-                        args = shlex.split(command)
-                        process_result = subprocess.run(
-                            args, 
-                            capture_output=True, 
-                            text=True, 
-                            timeout=30
-                        )
-                    
-                    if process_result.returncode == 0:
-                        result = f"✅ Command executed: {command}"
-                        if process_result.stdout.strip():
-                            result += f"\nOutput: {process_result.stdout.strip()}"
-                    else:
-                        result = f"❌ Command failed: {command}"
-                        if process_result.stderr.strip():
-                            result += f"\nError: {process_result.stderr.strip()}"
-                        
-                except subprocess.TimeoutExpired:
-                    result = f"⏰ Command timed out: {command}"
-                except Exception as e:
-                    result = f"❌ Command execution error: {command}\nError: {str(e)}"
+            import subprocess
+            import shlex
             
+            # Check if command contains shell operators that require shell=True
+            shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
+            needs_shell = any(op in command for op in shell_operators)
+            
+            if needs_shell:
+                # Use shell=True for commands with operators
+                process_result = subprocess.run(
+                    command,
+                    shell=True,
+                    executable="/bin/zsh",
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            else:
+                # Use shlex.split for simple commands without operators
+                args = shlex.split(command)
+                process_result = subprocess.run(
+                    args, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=30
+                )
+            
+            if process_result.returncode == 0:
+                result = f"✅ Command executed: {command}"
+                if process_result.stdout.strip():
+                    result += f"\nOutput: {process_result.stdout.strip()}"
+            else:
+                result = f"❌ Command failed: {command}"
+                if process_result.stderr.strip():
+                    result += f"\nError: {process_result.stderr.strip()}"
+                    
+        except subprocess.TimeoutExpired:
+            result = f"⏰ Command timed out: {command}"
         except Exception as e:
-            result = f"❌ Failed to execute {agent} command: {command}\nError: {str(e)}"
+            result = f"❌ Command execution error: {command}\nError: {str(e)}"
         
         results.append(f"Step {step_num}: {result}")
         messages.append(AIMessage(content=result))
@@ -557,9 +524,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         if any("git" in r.lower() for r in results if "❌" in r):
             completion_message += "• For Git errors, check repository status: `git status`\n"
             completion_message += "• Verify you're in a git repository: `git rev-parse --git-dir`\n"
-        if any("kubectl" in r.lower() for r in results if "❌" in r):
-            completion_message += "• For K8s errors, check cluster connection: `kubectl cluster-info`\n"
-            completion_message += "• Verify namespace: `kubectl get namespaces`\n"
     
     messages.append(AIMessage(content=completion_message))
     
@@ -597,56 +561,7 @@ def process_command(command: str, graph) -> Dict[str, Any]:
     return result
 
 
-# Alternative implementation that uses should_handle
-def create_agent_graph_with_should_handle() -> StateGraph:
-    """Create the main agent graph with should_handle-based routing."""
-    
-    # Initialize agents
-    router_agent = RouterAgent()
-    k8s_agent = K8sAgent()
-    
-    # Create the state graph
-    workflow = StateGraph(AgentState)
-    
-    # Add nodes
-    workflow.add_node("router", router_agent.process)
-    workflow.add_node("k8s_agent", k8s_agent.process)
-    workflow.add_node("handle_shell", handle_shell_command)
-    
-    # Add conditional edges from router using should_handle
-    workflow.add_conditional_edges(
-        "router",
-        route_decision_with_should_handle,
-        {
-            "k8s_agent": "k8s_agent",
-            "handle_shell": "handle_shell",
-            END: END
-        }
-    )
-    
-    # Add edges to END
-    workflow.add_edge("k8s_agent", END)
-    workflow.add_edge("handle_shell", END)
-    
-    # Set entry point
-    workflow.set_entry_point("router")
-    
-    return workflow.compile()
 
-
-def route_decision_with_should_handle(state: AgentState) -> str:
-    """Decide which node to route to based on should_handle methods."""
-    router_agent = RouterAgent()
-    k8s_agent = K8sAgent()
-    
-    # Check if k8s agent should handle this
-    if k8s_agent.should_handle(state):
-        return "k8s_agent"
-    # Check if router should handle this (for shell commands)
-    elif router_agent.should_handle(state):
-        return "handle_shell"
-    else:
-        return END
 
 
 if __name__ == "__main__":
