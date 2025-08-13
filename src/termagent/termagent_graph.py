@@ -534,11 +534,32 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         results.append(f"Step {step_num}: {result}")
         messages.append(AIMessage(content=result))
     
-    # Add completion message
-    completion_message = f"🎉 All {total_steps} steps completed successfully!\n\n"
-    completion_message += "Summary:\n"
-    for result in results:
-        completion_message += f"  {result}\n"
+    # Add completion message with success/failure summary
+    success_count = len([r for r in results if "✅" in r])
+    failure_count = len([r for r in results if "❌" in r])
+    
+    if failure_count == 0:
+        completion_message = f"🎉 All {total_steps} steps completed successfully!\n\n"
+        completion_message += "Summary:\n"
+        for result in results:
+            completion_message += f"  {result}\n"
+    else:
+        completion_message = f"⚠️ Task completed with {success_count} successful and {failure_count} failed steps.\n\n"
+        completion_message += "Summary:\n"
+        for result in results:
+            completion_message += f"  {result}\n"
+        
+        # Provide helpful suggestions for failed steps
+        completion_message += "\n💡 Suggestions:\n"
+        if any("docker" in r.lower() for r in results if "❌" in r):
+            completion_message += "• For Docker errors, check if the container name exists: `docker ps -a`\n"
+            completion_message += "• Verify container is running: `docker ps`\n"
+        if any("git" in r.lower() for r in results if "❌" in r):
+            completion_message += "• For Git errors, check repository status: `git status`\n"
+            completion_message += "• Verify you're in a git repository: `git rev-parse --git-dir`\n"
+        if any("kubectl" in r.lower() for r in results if "❌" in r):
+            completion_message += "• For K8s errors, check cluster connection: `kubectl cluster-info`\n"
+            completion_message += "• Verify namespace: `kubectl get namespaces`\n"
     
     messages.append(AIMessage(content=completion_message))
     
