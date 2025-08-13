@@ -9,8 +9,29 @@ from termagent.agents.base_agent import BaseAgent
 class ShellCommandDetector:
     """Detects and executes known shell commands directly."""
     
-    # Basic shell commands that can be executed directly
+    # Basic shell commands that can be executed directly with output capture
     KNOWN_COMMANDS = {'ls', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo'}
+    
+    # Interactive text editors that need special handling (run in foreground, block until closed)
+    INTERACTIVE_EDITORS = {'vi', 'vim', 'emacs', 'nano'}
+    
+    # Interactive system commands that need special handling (run in foreground, block until closed)
+    INTERACTIVE_COMMANDS = {
+        # System monitoring
+        'top', 'htop', 'btop', 'bashtop', 'atop', 'glances',
+        # File viewing
+        'less', 'more', 'most',
+        # Network monitoring
+        'iftop', 'iotop', 'nethogs', 'nload', 'slurm', 'ttyplot',
+        # Documentation
+        'man', 'info',
+        # Disk usage
+        'ncdu',
+        # Fun/visual
+        'asciiquarium', 'cmatrix', 'hollywood',
+        # Development tools
+        'python', 'python3', 'node', 'nodejs', 'irb', 'pry', 'ghci', 'gdb', 'lldb'
+    }
     
     def __init__(self, debug: bool = False, no_confirm: bool = False):
         self.debug = debug
@@ -31,7 +52,7 @@ class ShellCommandDetector:
             return False
         
         base_command = parts[0].lower()
-        return base_command in self.KNOWN_COMMANDS
+        return base_command in self.KNOWN_COMMANDS or base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
     
     def execute_command(self, command: str, cwd: str = ".") -> Tuple[bool, str, Optional[int]]:
         """Execute a shell command directly."""
@@ -40,39 +61,64 @@ class ShellCommandDetector:
         
         self._debug_print(f"Executing shell command: {command}")
         
+        # Check if this is an interactive command (editor or system command)
+        parts = shlex.split(command.strip())
+        base_command = parts[0].lower()
+        is_interactive = base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
+        
         try:
-            # Check if command contains shell operators that require shell=True
-            shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-            needs_shell = any(op in command for op in shell_operators)
-            
-            if needs_shell:
-                # Use shell=True for commands with operators
+            if is_interactive:
+                # For interactive commands, start them in the foreground
+                if base_command in self.INTERACTIVE_EDITORS:
+                    command_type = "text editor"
+                    action = "editing"
+                else:
+                    command_type = "system command"
+                    action = "monitoring"
+                
+                self._debug_print(f"Starting interactive {command_type}: {command}")
+                # Note: This will block until the command is closed
                 process_result = subprocess.run(
                     command,
                     shell=True,
                     executable="/bin/zsh",
-                    capture_output=True,
-                    text=True,
-                    cwd=cwd,
-                    timeout=30
+                    cwd=cwd
                 )
+                return True, f"✅ Interactive {command_type} {base_command} finished {action} (exit code: {process_result.returncode})", process_result.returncode
             else:
-                # Use shlex.split for simple commands without operators
-                args = shlex.split(command)
-                process_result = subprocess.run(
-                    args,
-                    capture_output=True,
-                    text=True,
-                    cwd=cwd,
-                    timeout=30
-                )
-            
-            if process_result.returncode == 0:
-                output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
-                return True, output, process_result.returncode
-            else:
-                error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
-                return False, f"❌ Command failed: {error_msg}", process_result.returncode
+                # Regular command execution with output capture
+                # Check if command contains shell operators that require shell=True
+                shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
+                needs_shell = any(op in command for op in shell_operators)
+                
+                if needs_shell:
+                    # Use shell=True for commands with operators
+                    process_result = subprocess.run(
+                        command,
+                        shell=True,
+                        executable="/bin/zsh",
+                        capture_output=True,
+                        text=True,
+                        cwd=cwd,
+                        timeout=30
+                    )
+                else:
+                    # Use shlex.split for simple commands without operators
+                    args = shlex.split(command)
+                    process_result = subprocess.run(
+                        args,
+                        capture_output=True,
+                        text=True,
+                        cwd=cwd,
+                        timeout=30
+                    )
+                
+                if process_result.returncode == 0:
+                    output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
+                    return True, output, process_result.returncode
+                else:
+                    error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
+                    return False, f"❌ Command failed: {error_msg}", process_result.returncode
                 
         except subprocess.TimeoutExpired:
             return False, f"⏰ Command timed out after 30 seconds: {command}", None
@@ -84,6 +130,38 @@ class ShellCommandDetector:
     def should_execute_directly(self, command: str) -> bool:
         """Determine if a command should be executed directly or routed to an agent."""
         return self.is_known_command(command)
+    
+    def is_interactive_command(self, command: str) -> bool:
+        """Check if a command is interactive (editor or system command)."""
+        if not command or not command.strip():
+            return False
+        
+        parts = shlex.split(command.strip())
+        if not parts:
+            return False
+        
+        base_command = parts[0].lower()
+        return base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
+    
+    def get_command_type(self, command: str) -> str:
+        """Get the type of command for better user feedback."""
+        if not command or not command.strip():
+            return "unknown"
+        
+        parts = shlex.split(command.strip())
+        if not parts:
+            return "unknown"
+        
+        base_command = parts[0].lower()
+        
+        if base_command in self.INTERACTIVE_EDITORS:
+            return "interactive_editor"
+        elif base_command in self.INTERACTIVE_COMMANDS:
+            return "interactive_command"
+        elif base_command in self.KNOWN_COMMANDS:
+            return "basic_command"
+        else:
+            return "unknown"
 
 
 class QueryDetector:
@@ -216,22 +294,12 @@ class RouterAgent(BaseAgent):
             return self._create_direct_execution_state(state, task)
         
         # Use LLM for intelligent task breakdown
-        if self.llm:
-            try:
-                breakdown = self._llm_task_breakdown(task)
-                if breakdown:
-                    # Validate the breakdown before using it
-                    validated_breakdown = self._validate_breakdown(breakdown, task)
-                    if validated_breakdown:
-                        return self._create_task_breakdown_state(state, task, validated_breakdown)
-                    else:
-                        self._debug_print(f"router: LLM breakdown validation failed, using fallback")
-            except Exception as e:
-                self._debug_print(f"router: LLM task breakdown failed: {e}")
-        
-        # If LLM is not available or fails, create a smart fallback
-        fallback_breakdown = self._create_smart_fallback_breakdown(task)
-        return self._create_task_breakdown_state(state, task, fallback_breakdown)
+        breakdown = self._llm_task_breakdown(task)
+        if breakdown:
+            return self._create_task_breakdown_state(state, task, breakdown)
+        else:
+            self._debug_print(f"router: LLM breakdown failed, using direct execution")
+            return self._create_direct_execution_state(state, task)
     
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
         """Use LLM to intelligently break down a task into steps."""
@@ -287,13 +355,13 @@ Breakdown: [
   }
 ]
 
-Task: "get all running pods in k8s"
+Task: "list all files in current directory"
 Breakdown: [
   {
     "step": 1,
-    "description": "List all running pods in Kubernetes",
-    "agent": "k8s_agent",
-    "command": "kubectl get pods --field-selector=status.phase=Running"
+    "description": "List all files in current directory",
+    "agent": "shell_command",
+    "command": "ls -la"
   }
 ]"""
 
@@ -416,278 +484,6 @@ Breakdown: [
             "query_type": query_type
         }
     
-    def _create_smart_fallback_breakdown(self, task: str) -> List[Dict[str, str]]:
-        """Create intelligent fallback task breakdown when LLM is not available."""
-        task_lower = task.lower()
-        
-        # Docker operations
-        if 'docker' in task_lower and 'container' in task_lower:
-            if 'stop' in task_lower:
-                # Extract container name from task
-                container_name = self._extract_container_name(task)
-                if container_name:
-                    return [{
-                        "step": 1,
-                        "description": f"Stop Docker container {container_name}",
-                        "agent": "shell_command",
-                        "command": f"docker stop {container_name}"
-                    }]
-            elif 'start' in task_lower:
-                container_name = self._extract_container_name(task)
-                if container_name:
-                    return [{
-                        "step": 1,
-                        "description": f"Start Docker container {container_name}",
-                        "agent": "shell_command",
-                        "command": f"docker start {container_name}"
-                    }]
-            elif 'remove' in task_lower or 'delete' in task_lower or 'rm' in task_lower:
-                container_name = self._extract_container_name(task)
-                if container_name:
-                    return [{
-                        "step": 1,
-                        "description": f"Remove Docker container {container_name}",
-                        "agent": "shell_command",
-                        "command": f"docker rm {container_name}"
-                    }]
-            elif 'list' in task_lower or 'show' in task_lower or 'ps' in task_lower:
-                return [{
-                    "step": 1,
-                    "description": "List Docker containers",
-                    "agent": "shell_command",
-                    "command": "docker ps -a"
-                }]
-        
-        # Git operations
-        elif 'git' in task_lower:
-            if 'status' in task_lower:
-                return [{
-                    "step": 1,
-                    "description": "Check git repository status",
-                    "agent": "shell_command",
-                    "command": "git status"
-                }]
-            elif 'add' in task_lower:
-                return [{
-                    "step": 1,
-                    "description": "Add files to git staging area",
-                    "agent": "shell_command",
-                    "command": "git add ."
-                }]
-            elif 'commit' in task_lower:
-                # Extract commit message if provided
-                commit_msg = self._extract_commit_message(task)
-                if commit_msg:
-                    return [{
-                        "step": 1,
-                        "description": f"Commit changes with message: {commit_msg}",
-                        "agent": "shell_command",
-                        "command": f"git commit -m '{commit_msg}'"
-                    }]
-                else:
-                    return [{
-                        "step": 1,
-                        "description": "Commit changes with default message",
-                        "agent": "shell_command",
-                        "command": "git commit -m 'Update'"
-                    }]
-            elif 'branch' in task_lower:
-                if 'create' in task_lower or 'new' in task_lower:
-                    branch_name = self._extract_branch_name(task)
-                    if branch_name:
-                        return [{
-                            "step": 1,
-                            "description": f"Create and switch to new git branch {branch_name}",
-                            "agent": "shell_command",
-                            "command": f"git checkout -b {branch_name}"
-                        }]
-                    else:
-                        return [{
-                            "step": 1,
-                            "description": "Create and switch to new git branch",
-                            "agent": "shell_command",
-                            "command": "git checkout -b new-branch"
-                        }]
-                else:
-                    return [{
-                        "step": 1,
-                        "description": "List all git branches",
-                        "agent": "shell_command",
-                        "command": "git branch -a"
-                    }]
-        
-        # File operations
-        elif any(word in task_lower for word in ['list', 'show', 'count', 'ls', 'dir']):
-            if 'python' in task_lower or 'py' in task_lower:
-                return [{
-                    "step": 1,
-                    "description": "Count Python files in current directory",
-                    "agent": "shell_command",
-                    "command": "ls *.py | wc -l"
-                }]
-            elif 'file' in task_lower:
-                return [{
-                    "step": 1,
-                    "description": "List files in current directory",
-                    "agent": "shell_command",
-                    "command": "ls -la"
-                }]
-            else:
-                return [{
-                    "step": 1,
-                    "description": "List files in current directory",
-                    "agent": "shell_command",
-                    "command": "ls -la"
-                }]
-        
 
-        
-        # Generic fallback - try to execute the task directly
-        return [{
-            "step": 1,
-            "description": f"Execute task: {task}",
-            "agent": "shell_command",
-            "command": task
-        }]
-    
-    def _extract_container_name(self, task: str) -> str:
-        """Extract container name from Docker-related tasks."""
-        # Look for patterns like "container nginx", "container nginx123", etc.
-        import re
-        patterns = [
-            r'container\s+([a-zA-Z0-9_-]+)',
-            r'([a-zA-Z0-9_-]+)\s+container',
-            r'stop\s+([a-zA-Z0-9_-]+)',
-            r'start\s+([a-zA-Z0-9_-]+)',
-            r'remove\s+([a-zA-Z0-9_-]+)',
-            r'delete\s+([a-zA-Z0-9_-]+)',
-            r'rm\s+([a-zA-Z0-9_-]+)'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, task, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        
-        return ""
-    
-    def _extract_commit_message(self, task: str) -> str:
-        """Extract commit message from git commit tasks."""
-        import re
-        # Look for patterns like "commit 'message'", "commit message", etc.
-        patterns = [
-            r"commit\s+['\"]([^'\"]+)['\"]",
-            r"commit\s+([a-zA-Z0-9\s_-]+)",
-            r"message\s+['\"]([^'\"]+)['\"]",
-            r"message\s+([a-zA-Z0-9\s_-]+)"
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, task, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
-        
-        return ""
-    
-    def _extract_branch_name(self, task: str) -> str:
-        """Extract branch name from git branch tasks."""
-        import re
-        # Look for patterns like "branch feature-x", "branch called feature-x", etc.
-        patterns = [
-            r"branch\s+called\s+([a-zA-Z0-9_-]+)",
-            r"branch\s+([a-zA-Z0-9_-]+)",
-            r"create\s+([a-zA-Z0-9_-]+)",
-            r"new\s+([a-zA-Z0-9_-]+)"
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, task, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
-        
-        return ""
 
-    def _validate_breakdown(self, breakdown: List[Dict[str, str]], task: str) -> List[Dict[str, str]]:
-        """Validate and improve task breakdown to ensure it's actionable."""
-        if not breakdown:
-            return []
-        
-        validated_breakdown = []
-        task_lower = task.lower()
-        
-        for i, step in enumerate(breakdown):
-            step_num = i + 1
-            description = step.get("description", "")
-            agent = step.get("agent", "")
-            command = step.get("command", "")
-            
-            # Validate required fields
-            if not description or not agent or not command:
-                self._debug_print(f"router: Skipping invalid step {step_num}: missing required fields")
-                continue
-            
-            # Check for common issues and fix them
-            fixed_command = command
-            
-            # Fix Docker container operations
-            if 'docker' in task_lower and 'container' in task_lower:
-                if 'stop' in task_lower and 'docker ps' in command.lower():
-                    # Replace generic docker ps with direct stop command
-                    container_name = self._extract_container_name(task)
-                    if container_name:
-                        fixed_command = f"docker stop {container_name}"
-                        description = f"Stop Docker container {container_name}"
-                elif 'start' in task_lower and 'docker ps' in command.lower():
-                    container_name = self._extract_container_name(task)
-                    if container_name:
-                        fixed_command = f"docker start {container_name}"
-                        description = f"Start Docker container {container_name}"
-                elif 'remove' in task_lower and 'docker ps' in command.lower():
-                    container_name = self._extract_container_name(task)
-                    if container_name:
-                        fixed_command = f"docker rm {container_name}"
-                        description = f"Remove Docker container {container_name}"
-            
-            # Fix Git operations
-            elif 'git' in task_lower:
-                if 'commit' in task_lower and 'git status' in command.lower():
-                    # Replace git status with actual commit command
-                    commit_msg = self._extract_commit_message(task)
-                    if commit_msg:
-                        fixed_command = f"git commit -m '{commit_msg}'"
-                        description = f"Commit changes with message: {commit_msg}"
-                    else:
-                        fixed_command = "git commit -m 'Update'"
-                        description = "Commit changes with default message"
-                elif 'branch' in task_lower and 'git status' in command.lower():
-                    # Replace git status with branch creation
-                    branch_name = self._extract_branch_name(task)
-                    if branch_name:
-                        fixed_command = f"git checkout -b {branch_name}"
-                        description = f"Create and switch to new git branch {branch_name}"
-                    else:
-                        fixed_command = "git checkout -b new-branch"
-                        description = "Create and switch to new git branch"
-            
-            # Validate agent assignment
-            if agent not in ["shell_command"]:
-                # Default to shell_command for unknown agents
-                agent = "shell_command"
-            
-            # Create validated step
-            validated_step = {
-                "step": step_num,
-                "description": description,
-                "agent": agent,
-                "command": fixed_command
-            }
-            
-            validated_breakdown.append(validated_step)
-            self._debug_print(f"router: Validated step {step_num}: {description}")
-        
-        # If validation removed all steps, create a simple fallback
-        if not validated_breakdown:
-            self._debug_print(f"router: All steps were invalid, creating fallback")
-            return self._create_smart_fallback_breakdown(task)
-        
-        return validated_breakdown
+

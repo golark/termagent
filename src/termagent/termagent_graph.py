@@ -249,33 +249,11 @@ Analyze this query:"""
             return result["command"], result["description"], result["response_type"]
             
         else:
-            # Fallback to basic pattern matching if LLM is not available
-            return _fallback_query_analysis(query)
+            # LLM is not available, return a simple fallback
+            return query, f"Executing query: {query}", "generic"
             
     except Exception as e:
-        # Fallback to basic pattern matching if LLM fails
-        return _fallback_query_analysis(query)
-
-
-def _fallback_query_analysis(query: str) -> tuple[str, str, str]:
-    """Fallback method to analyze queries when LLM is not available."""
-    query_lower = query.lower()
-    
-    # Basic pattern matching as fallback
-    if 'python' in query_lower and ('file' in query_lower or 'count' in query_lower):
-        return "ls *.py | wc -l", "Counting Python files in current directory", "count"
-    elif 'file' in query_lower and ('count' in query_lower or 'how many' in query_lower):
-        return "ls -1 | wc -l", "Counting files in current directory", "count"
-    elif 'git' in query_lower and ('status' in query_lower or 'state' in query_lower):
-        return "git status", "Showing git repository status", "status"
-    elif 'git' in query_lower and 'branch' in query_lower:
-        return "git branch -a", "Listing all git branches", "list"
-    elif 'docker' in query_lower and 'container' in query_lower:
-        return "docker ps -a", "Showing Docker containers", "list"
-    elif 'docker' in query_lower and 'image' in query_lower:
-        return "docker images", "Listing Docker images", "list"
-    else:
-        # Generic fallback
+        # LLM failed, return a simple fallback
         return query, f"Executing query: {query}", "generic"
 
 
