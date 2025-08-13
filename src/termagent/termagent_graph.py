@@ -165,10 +165,6 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
             # Generate natural language response based on query type and output
             natural_response = _generate_natural_response(query, response_type, output, command)
             response += f"✅ Result:\n{natural_response}"
-            
-            # Add raw output for reference (in smaller text)
-            if output and output != "✅ Command executed successfully":
-                response += f"\n\n📊 Raw output:\n```\n{output}\n```"
         else:
             error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
             response += f"❌ Error:\n{error_msg}"

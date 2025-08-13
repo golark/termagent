@@ -13,7 +13,7 @@ class ShellCommandDetector:
     """Detects and executes known shell commands directly."""
     
     # Basic shell commands that can be executed directly with output capture
-    KNOWN_COMMANDS = {'ls', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo'}
+    KNOWN_COMMANDS = {'ls', 'll', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo'}
     
     # Directory navigation commands that need special handling
     NAVIGATION_COMMANDS = {'cd'}
@@ -127,6 +127,33 @@ class ShellCommandDetector:
         if command.strip().lower() == "pwd":
             self._debug_print("detected pwd command")
             return True, self.show_current_directory(cwd), 0, cwd
+        
+        # Handle command aliases
+        if command.strip().lower() == "ll":
+            self._debug_print("detected ll command (alias for ls -la)")
+            # Execute ls -la directly instead of recursive call
+            try:
+                process_result = subprocess.run(
+                    ["ls", "-la"],
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    timeout=30
+                )
+                
+                if process_result.returncode == 0:
+                    output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
+                    return True, output, process_result.returncode, cwd
+                else:
+                    error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
+                    return False, f"❌ Command failed: {error_msg}", process_result.returncode, cwd
+                    
+            except subprocess.TimeoutExpired:
+                return False, f"⏰ Command timed out after 30 seconds: ll", None, cwd
+            except FileNotFoundError:
+                return False, f"❌ Command not found: ll", None, cwd
+            except Exception as e:
+                return False, f"❌ Command execution error: ll\nError: {str(e)}", None, cwd
         
         # Check if this is an interactive command (editor or system command)
         parts = shlex.split(command.strip())
