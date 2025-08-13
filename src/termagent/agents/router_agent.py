@@ -154,10 +154,10 @@ class QueryDetector:
             return 'k8s_query'
         
         # File, system, and git queries - route to shell handler
-        if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status', 'git', 'commit', 'branch', 'remote', 'repository']):
+        if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status', 'git', 'commit', 'branch', 'remote', 'repository', 'permissions', 'attributes', 'owner', 'group']):
             return 'shell_query'
         
-        return 'general_query'
+        return 'shell_query'
 
 
 class RouterAgent(BaseAgent):
