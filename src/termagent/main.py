@@ -4,8 +4,9 @@ TermAgent - A LangGraph-based agent system with router and git agent via MCP.
 """
 
 import sys
+import os
 import argparse
-from .termagent_graph import create_agent_graph, process_command
+from .termagent_graph import create_agent_graph, process_command, process_command_with_cwd
 from .input_handler import create_input_handler
 
 
@@ -54,7 +55,7 @@ def main():
             # Process the command
             if args.debug:
                 print(f"\n🔄 Processing: {args.oneshot}")
-            result = process_command(args.oneshot, graph, debug=args.debug, no_confirm=args.no_confirm)
+            result = process_command_with_cwd(args.oneshot, graph, os.getcwd(), debug=args.debug, no_confirm=args.no_confirm)
             
             # Display the result
             messages = result.get("messages", [])
@@ -94,6 +95,9 @@ def main():
     # Create input handler with command history
     input_handler = create_input_handler(debug=args.debug)
     
+    # Track working directory across commands
+    current_working_directory = os.getcwd()
+    
     while True:
         try:
             # Get user input with history navigation
@@ -117,10 +121,19 @@ def main():
                 continue
 
             
-            # Process the command
+            # Process the command with current working directory
             if args.debug:
                 print(f"\n🔄 Processing: {command}")
-            result = process_command(command, graph, debug=args.debug, no_confirm=args.no_confirm)
+                print(f"📍 Current working directory: {current_working_directory}")
+            
+            result = process_command_with_cwd(command, graph, current_working_directory, debug=args.debug, no_confirm=args.no_confirm)
+            
+            # Update working directory from result
+            new_cwd = result.get("current_working_directory")
+            if new_cwd and new_cwd != current_working_directory:
+                current_working_directory = new_cwd
+                if args.debug:
+                    print(f"📍 Working directory updated to: {current_working_directory}")
             
             # Display the result
             messages = result.get("messages", [])

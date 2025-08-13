@@ -21,6 +21,8 @@ class AgentState(TypedDict):
     # Configuration fields
     debug: bool | None
     no_confirm: bool | None
+    # Working directory tracking
+    current_working_directory: str | None
 
 
 def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
@@ -354,13 +356,15 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     last_command = state.get("last_command", "Unknown command")
     
     # Import the shell command detector from its own module
+    import os
     from termagent.shell_commands import ShellCommandDetector
     
     # Create detector instance
     detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
     
     # Execute the command directly
-    success, output, return_code = detector.execute_command(last_command)
+    current_cwd = state.get("current_working_directory", os.getcwd())
+    success, output, return_code, new_cwd = detector.execute_command(last_command, current_cwd)
     
     if success:
         result_message = f"✅"
@@ -375,7 +379,8 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     
     return {
         **state,
-        "messages": messages
+        "messages": messages,
+        "current_working_directory": new_cwd
     }
 
 
@@ -521,6 +526,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
 def process_command(command: str, graph, debug: bool = False, no_confirm: bool = False) -> Dict[str, Any]:
     """Process a command through the agent graph."""
     # Create initial state
+    import os
     initial_state = AgentState(
         messages=[HumanMessage(content=command)],
         routed_to=None,
@@ -532,7 +538,33 @@ def process_command(command: str, graph, debug: bool = False, no_confirm: bool =
         is_query=None,
         query_type=None,
         debug=debug,
-        no_confirm=no_confirm
+        no_confirm=no_confirm,
+        current_working_directory=os.getcwd()
+    )
+    
+    # Run the graph with config
+    config = {"configurable": {"thread_id": "default"}}
+    result = graph.invoke(initial_state, config=config)
+    
+    return result
+
+
+def process_command_with_cwd(command: str, graph, current_working_directory: str, debug: bool = False, no_confirm: bool = False) -> Dict[str, Any]:
+    """Process a command through the agent graph with a specific working directory."""
+    # Create initial state with the provided working directory
+    initial_state = AgentState(
+        messages=[HumanMessage(content=command)],
+        routed_to=None,
+        last_command=None,
+        error=None,
+        task_breakdown=None,
+        current_step=None,
+        total_steps=None,
+        is_query=None,
+        query_type=None,
+        debug=debug,
+        no_confirm=no_confirm,
+        current_working_directory=current_working_directory
     )
     
     # Run the graph with config
