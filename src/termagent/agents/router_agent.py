@@ -4,7 +4,7 @@ import shlex
 from typing import Dict, Any, List, Tuple, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
-from termagent.shell_detector import ShellCommandDetector
+from termagent.shell_commands import ShellCommandDetector
 
 
 class QueryDetector:

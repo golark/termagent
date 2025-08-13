@@ -15,6 +15,26 @@ class ShellCommandDetector:
     # Basic shell commands that can be executed directly with output capture
     KNOWN_COMMANDS = {'ls', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo'}
     
+    # Git commands that can be executed directly
+    GIT_COMMANDS = {
+        'git status', 'git add', 'git commit', 'git push', 'git pull', 'git fetch',
+        'git branch', 'git checkout', 'git merge', 'git rebase', 'git log', 'git diff',
+        'git show', 'git stash', 'git reset', 'git revert', 'git tag', 'git remote',
+        'git clone', 'git init', 'git config', 'git help', 'git clean', 'git rm',
+        'git mv', 'git blame', 'git bisect', 'git cherry-pick', 'git reflog',
+        'git worktree', 'git submodule', 'git notes', 'git archive', 'git bundle'
+    }
+    
+    # Git command patterns (base commands that can have arguments)
+    GIT_COMMAND_PATTERNS = {
+        'git add', 'git commit', 'git push', 'git pull', 'git fetch', 'git branch',
+        'git checkout', 'git merge', 'git rebase', 'git log', 'git diff', 'git show',
+        'git stash', 'git reset', 'git revert', 'git tag', 'git remote', 'git clone',
+        'git init', 'git config', 'git help', 'git status', 'git clean', 'git rm',
+        'git mv', 'git blame', 'git bisect', 'git cherry-pick', 'git reflog',
+        'git worktree', 'git submodule', 'git notes', 'git archive', 'git bundle'
+    }
+    
     # Interactive text editors that need special handling (run in foreground, block until closed)
     INTERACTIVE_EDITORS = {'vi', 'vim', 'emacs', 'nano'}
     
@@ -43,18 +63,31 @@ class ShellCommandDetector:
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
         if self.debug:
-            print(f"shell_detector | {message}")
+            print(f"shell_comm   | {message}")
     
     def is_known_command(self, command: str) -> bool:
         """Check if the command is a known shell command."""
         if not command or not command.strip():
             return False
         
+        command_lower = command.strip().lower()
+        
+        # Check for git commands first (exact match for common patterns)
+        if command_lower in self.GIT_COMMANDS:
+            return True
+        
         parts = shlex.split(command.strip())
         if not parts:
             return False
         
         base_command = parts[0].lower()
+        
+        # Check if it's a git command with arguments
+        if base_command == 'git' and len(parts) > 1:
+            git_subcommand = f"git {parts[1]}"
+            if git_subcommand in self.GIT_COMMAND_PATTERNS:
+                return True
+        
         return base_command in self.KNOWN_COMMANDS or base_command in self.INTERACTIVE_EDITORS or base_command in self.INTERACTIVE_COMMANDS
     
     def execute_command(self, command: str, cwd: str = ".") -> Tuple[bool, str, Optional[int]]:
@@ -63,6 +96,11 @@ class ShellCommandDetector:
             return False, "Command is not a known shell command", None
         
         self._debug_print(f"executing: {command}")
+        
+        # Check if this is a git command
+        is_git = self.is_git_command(command)
+        if is_git:
+            self._debug_print(f"detected git command: {command}")
         
         # Check if this is an interactive command (editor or system command)
         parts = shlex.split(command.strip())
@@ -151,11 +189,23 @@ class ShellCommandDetector:
         if not command or not command.strip():
             return "unknown"
         
+        command_lower = command.strip().lower()
+        
+        # Check for git commands first
+        if command_lower in self.GIT_COMMANDS:
+            return "git_command"
+        
         parts = shlex.split(command.strip())
         if not parts:
             return "unknown"
         
         base_command = parts[0].lower()
+        
+        # Check if it's a git command with arguments
+        if base_command == 'git' and len(parts) > 1:
+            git_subcommand = f"git {parts[1]}"
+            if git_subcommand in self.GIT_COMMAND_PATTERNS:
+                return "git_command"
         
         if base_command in self.INTERACTIVE_EDITORS:
             return "interactive_editor"
@@ -165,3 +215,12 @@ class ShellCommandDetector:
             return "basic_command"
         else:
             return "unknown"
+    
+    def get_git_command_suggestions(self) -> list:
+        """Get a list of commonly used git commands for suggestions."""
+        return sorted(list(self.GIT_COMMANDS))
+    
+    def is_git_command(self, command: str) -> bool:
+        """Check if a command is a git command."""
+        command_type = self.get_command_type(command)
+        return command_type == "git_command"

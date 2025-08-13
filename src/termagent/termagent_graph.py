@@ -354,7 +354,7 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     last_command = state.get("last_command", "Unknown command")
     
     # Import the shell command detector from its own module
-    from termagent.shell_detector import ShellCommandDetector
+    from termagent.shell_commands import ShellCommandDetector
     
     # Create detector instance
     detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
@@ -487,8 +487,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     failure_count = len([r for r in results if "❌" in r])
     
     if failure_count == 0:
-        completion_message = f"🎉 All {total_steps} steps completed successfully!\n\n"
-        completion_message += "Summary:\n"
+        completion_message = "Summary:\n"
         for result in results:
             completion_message += f"  {result}\n"
     else:
