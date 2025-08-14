@@ -1,10 +1,12 @@
 import re
 import subprocess
 import shlex
+import os
 from typing import Dict, Any, List, Tuple, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
 from termagent.shell_commands import ShellCommandDetector
+from termagent.directory_context import get_directory_context, get_relevant_files_context
 
 
 class QueryDetector:
@@ -145,7 +147,25 @@ class RouterAgent(BaseAgent):
     
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
         """Use LLM to intelligently break down a task into steps."""
-        system_prompt = """You are a task analysis expert. Given a task, break it down into the MINIMAL number of logical steps and assign the most appropriate agent for each step.
+        
+        # Get directory context for the LLM
+        try:
+            current_dir = os.getcwd()
+            directory_context = get_directory_context(current_dir, max_depth=2, max_files_per_dir=15)
+            relevant_files = get_relevant_files_context(current_dir)
+            
+            context_info = f"""📁 CURRENT WORKSPACE CONTEXT:
+{directory_context}
+
+{relevant_files}
+
+"""
+        except Exception as e:
+            context_info = f"⚠️  Could not get directory context: {e}\n\n"
+        
+        system_prompt = f"""You are a task analysis expert. Given a task, break it down into the MINIMAL number of logical steps and assign the most appropriate agent for each step.
+
+{context_info}
 
 CRITICAL RULES:
 1. Use the FEWEST possible steps to accomplish the task
@@ -154,6 +174,8 @@ CRITICAL RULES:
 4. If the user provides specific names/identifiers, use them directly
 5. Combine related operations into single steps when possible
 6. Only create separate steps when they are truly sequential dependencies
+7. Use the directory context above to understand the current workspace structure
+8. Reference specific files and directories that exist in the workspace when relevant
 
 Available agents:
 - shell_command: For system commands, git operations, file operations, Docker, and other operations
@@ -169,42 +191,42 @@ EXAMPLES:
 
 Task: "stop docker container nginxx"
 Breakdown: [
-  {
+  {{
     "step": 1,
     "description": "Stop the Docker container named nginxx",
     "agent": "shell_command",
     "command": "docker stop nginxx"
-  }
+  }}
 ]
 
 Task: "create a new git branch called feature-x"
 Breakdown: [
-  {
+  {{
     "step": 1,
     "description": "Create and switch to new git branch feature-x",
     "agent": "shell_command",
     "command": "git checkout -b feature-x"
-  }
+  }}
 ]
 
 Task: "check how many python files are in this directory"
 Breakdown: [
-  {
+  {{
     "step": 1,
     "description": "Count Python files in current directory",
     "agent": "shell_command",
     "command": "ls *.py | wc -l"
-  }
+  }}
 ]
 
 Task: "list all files in current directory"
 Breakdown: [
-  {
+  {{
     "step": 1,
     "description": "List all files in current directory",
     "agent": "shell_command",
     "command": "ls -la"
-  }
+  }}
 ]"""
 
         try:

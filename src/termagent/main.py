@@ -158,8 +158,6 @@ def main():
 
     print("-" * 30)
     
-
-    
     # Create input handler with command history
     input_handler = create_input_handler(debug=args.debug)
     
