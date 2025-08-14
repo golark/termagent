@@ -155,24 +155,13 @@ def main():
     print("  history     - Show command history")
     print("  search <q>  - Search command history")
     print("  clear       - Clear command history")
-    print("  voice       - Enable voice input mode")
-    print("  Note: Voice commands are automatically processed through the router")
+
     print("-" * 30)
     
-    # Set up command processor for voice commands
-    def process_voice_command(command: str):
-        """Process voice commands through the router."""
-        try:
-            return process_command_with_cwd(command, graph, current_working_directory, debug=args.debug, no_confirm=args.no_confirm)
-        except Exception as e:
-            print(f"❌ Error processing voice command: {str(e)}")
-            if args.debug:
-                import traceback
-                traceback.print_exc()
-            return None
+
     
-    # Create input handler with command history and command processor
-    input_handler = create_input_handler(debug=args.debug, command_processor=process_voice_command)
+    # Create input handler with command history
+    input_handler = create_input_handler(debug=args.debug)
     
     # Track working directory across commands
     current_working_directory = os.getcwd()
@@ -198,13 +187,7 @@ def main():
             elif command.lower() == 'stats':
                 input_handler.get_history_stats()
                 continue
-            elif command.lower() == 'voice':
-                if input_handler.is_voice_available():
-                    print("🎤 Activating voice input mode...")
-                    input_handler._toggle_voice_input()
-                else:
-                    print("❌ Voice input not available")
-                continue
+
 
             
             # Process the command with current working directory

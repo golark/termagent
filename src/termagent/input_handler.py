@@ -1,25 +1,14 @@
 #!/usr/bin/env python3
 """
-Input handler for TermAgent with command history navigation and voice input.
-Provides up/down arrow key navigation through command history and voice command recognition.
+Input handler for TermAgent with command history navigation.
+Provides up/down arrow key navigation through command history.
 """
 
 import os
 import readline
 import atexit
-import threading
-import time
-from typing import List, Optional, Callable
+from typing import List, Optional
 from pathlib import Path
-
-try:
-    import pyaudio
-    import numpy as np
-    from vosk import Model, KaldiRecognizer
-    VOSK_AVAILABLE = True
-except ImportError:
-    VOSK_AVAILABLE = False
-    print("⚠️  Voice input not available: Install vosk and pyaudio for voice commands")
 
 
 class CommandHistory:
@@ -103,7 +92,7 @@ class CommandHistory:
                     readline.remove_history_item(0)
     
     def get_history(self) -> List[str]:
-        """Get the current command history.
+        """Get all commands in history.
         
         Returns:
             List of commands in history
@@ -114,257 +103,50 @@ class CommandHistory:
             return []
     
     def search_history(self, query: str) -> List[str]:
-        """Search command history for commands matching a query.
+        """Search command history for commands matching query.
         
         Args:
-            query: Search query string
+            query: Search query
             
         Returns:
             List of matching commands
         """
-        history = self.get_history()
+        if not query.strip():
+            return []
+        
         query_lower = query.lower()
-        return [cmd for cmd in history if query_lower in cmd.lower()]
+        history = self.get_history()
+        matches = [cmd for cmd in history if query_lower in cmd.lower()]
+        return matches
     
     def clear_history(self):
-        """Clear the command history."""
+        """Clear command history."""
         try:
             readline.clear_history()
+            if os.path.exists(self.history_file):
+                os.remove(self.history_file)
         except Exception as e:
             print(f"⚠️  Warning: Could not clear history: {e}")
     
     def get_history_stats(self) -> dict:
-        """Get statistics about the command history.
+        """Get statistics about command history.
         
         Returns:
             Dictionary with history statistics
         """
-        try:
-            total_commands = readline.get_current_history_length()
-            history = self.get_history()
-            
-            return {
-                'total_commands': total_commands,
-                'unique_commands': len(set(history)),
-                'history_file': self.history_file,
-                'max_history': self.max_history
-            }
-        except Exception:
-            return {
-                'total_commands': 0,
-                'unique_commands': 0,
-                'history_file': self.history_file,
-                'max_history': self.max_history
-            }
-
-
-class VoiceInputHandler:
-    """Handles voice input using Vosk speech recognition."""
-    
-    def __init__(self, model_path: Optional[str] = None, debug: bool = False):
-        """Initialize voice input handler.
+        history = self.get_history()
+        unique_commands = len(set(history))
         
-        Args:
-            model_path: Path to Vosk model (defaults to ~/.termagent/models/vosk-model-small-en-us)
-            debug: Enable debug mode
-        """
-        self.debug = debug
-        self.is_listening = False
-        self.audio_thread = None
-        self.recognizer = None
-        self.audio_stream = None
-        self.audio = None
-        self.model = None
-        
-        if not VOSK_AVAILABLE:
-            self._debug_print("Voice input not available - missing dependencies")
-            return
-        
-        # Set up model path
-        if model_path is None:
-            # First try to use model in project models directory
-            project_model_dir = Path(__file__).parent.parent.parent / "models"
-            if project_model_dir.exists():
-                # Look for extracted model directories
-                for item in project_model_dir.iterdir():
-                    if item.is_dir() and item.name.startswith("vosk-model-"):
-                        model_path = str(item)
-                        break
-                
-                # If no extracted model found, try to extract the zip file
-                if not model_path:
-                    zip_files = list(project_model_dir.glob("*.zip"))
-                    if zip_files:
-                        zip_file = zip_files[0]  # Use first zip file
-                        model_path = self._extract_model(zip_file, project_model_dir)
-            
-            # Fallback to home directory
-            if not model_path:
-                model_dir = Path.home() / ".termagent" / "models"
-                model_dir.mkdir(parents=True, exist_ok=True)
-                model_path = str(model_dir / "vosk-model-small-en-us")
-        
-        self.model_path = model_path
-        self._setup_voice_recognition()
-    
-    def _extract_model(self, zip_file: Path, extract_dir: Path) -> Optional[str]:
-        """Extract a Vosk model from a zip file.
-        
-        Args:
-            zip_file: Path to the zip file
-            extract_dir: Directory to extract to
-            
-        Returns:
-            Path to the extracted model directory, or None if extraction failed
-        """
-        try:
-            import zipfile
-            
-            self._debug_print(f"Extracting model from {zip_file}")
-            
-            # Extract the zip file
-            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-            
-            # Find the extracted model directory
-            for item in extract_dir.iterdir():
-                if item.is_dir() and item.name.startswith("vosk-model-"):
-                    self._debug_print(f"Model extracted to: {item}")
-                    return str(item)
-            
-            self._debug_print("No model directory found after extraction")
-            return None
-            
-        except Exception as e:
-            self._debug_print(f"Failed to extract model: {e}")
-            return None
-    
-    def _debug_print(self, message: str):
-        """Print debug message if debug mode is enabled."""
-        if self.debug:
-            print(f"voice_handler: {message}")
-    
-    def _setup_voice_recognition(self):
-        """Set up Vosk model and audio components."""
-        try:
-            # Check if model exists
-            if not os.path.exists(self.model_path):
-                self._debug_print(f"Model not found at {self.model_path}")
-                self._debug_print("Download a Vosk model from https://alphacephei.com/vosk/models")
-                return
-            
-            # Load Vosk model
-            self._debug_print(f"Loading Vosk model from {self.model_path}")
-            self.model = Model(self.model_path)
-            self.recognizer = KaldiRecognizer(self.model, 16000)
-            
-            # Initialize PyAudio
-            self.audio = pyaudio.PyAudio()
-            self._debug_print("Voice recognition initialized successfully")
-            
-        except Exception as e:
-            self._debug_print(f"Failed to initialize voice recognition: {e}")
-            self.model = None
-    
-    def start_listening(self, callback: Callable[[str], None]):
-        """Start listening for voice input in a background thread.
-        
-        Args:
-            callback: Function to call when voice input is detected
-        """
-        if not self.model or self.is_listening:
-            return
-        
-        self.is_listening = True
-        self.audio_thread = threading.Thread(target=self._listen_loop, args=(callback,), daemon=True)
-        self.audio_thread.start()
-        self._debug_print("Started listening for voice input")
-    
-    def stop_listening(self):
-        """Stop listening for voice input."""
-        self.is_listening = False
-        if self.audio_thread:
-            self.audio_thread.join(timeout=1.0)
-        self._cleanup_audio()
-        self._debug_print("Stopped listening for voice input")
-    
-    def _listen_loop(self, callback: Callable[[str], None]):
-        """Main listening loop for voice input."""
-        try:
-            # Open audio stream
-            self.audio_stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=16000,
-                input=True,
-                frames_per_buffer=8192
-            )
-            
-            self._debug_print("Audio stream opened, listening...")
-            
-            while self.is_listening:
-                try:
-                    # Read audio data
-                    data = self.audio_stream.read(8192, exception_on_overflow=False)
-                    
-                    if self.recognizer.AcceptWaveform(data):
-                        # Process the recognized speech
-                        result = self.recognizer.Result()
-                        import json
-                        result_dict = json.loads(result)
-                        
-                        if result_dict.get('text', '').strip():
-                            text = result_dict['text'].strip()
-                            self._debug_print(f"Recognized: {text}")
-                            
-                            # Call the callback with the recognized text
-                            callback(text)
-                            
-                except Exception as e:
-                    self._debug_print(f"Error in audio processing: {e}")
-                    break
-                    
-        except Exception as e:
-            self._debug_print(f"Error in listening loop: {e}")
-        finally:
-            self._cleanup_audio()
-    
-    def _cleanup_audio(self):
-        """Clean up audio resources."""
-        if self.audio_stream:
-            try:
-                self.audio_stream.stop_stream()
-                self.audio_stream.close()
-            except:
-                pass
-            self.audio_stream = None
-    
-    def is_available(self) -> bool:
-        """Check if voice input is available.
-        
-        Returns:
-            True if voice input is available, False otherwise
-        """
-        return VOSK_AVAILABLE and self.model is not None
-    
-    def get_status(self) -> str:
-        """Get the status of voice input.
-        
-        Returns:
-            Status string describing voice input availability
-        """
-        if not VOSK_AVAILABLE:
-            return "Voice input not available - missing dependencies"
-        elif not self.model:
-            return "Voice input not available - model not loaded"
-        elif self.is_listening:
-            return "Voice input active - listening for commands"
-        else:
-            return "Voice input ready - press 'v' to activate"
+        return {
+            'total_commands': len(history),
+            'unique_commands': unique_commands,
+            'history_file': self.history_file,
+            'max_history': self.max_history
+        }
 
 
 class InputHandler:
-    """Handles user input with command history navigation and voice input."""
+    """Handles user input with command history navigation."""
     
     def __init__(self, history_file: Optional[str] = None, debug: bool = False):
         """Initialize input handler.
@@ -375,8 +157,6 @@ class InputHandler:
         """
         self.debug = debug
         self.history = CommandHistory(history_file)
-        self.voice_handler = VoiceInputHandler(debug=debug)
-        self.voice_active = False
         self._setup_input_handling()
     
     def _setup_input_handling(self):
@@ -385,14 +165,9 @@ class InputHandler:
             print("🔧 Input handler initialized with command history navigation")
             print("   Use ↑/↓ arrow keys to navigate command history")
             print("   Use Ctrl+R to search history (if supported)")
-            if self.voice_handler.is_available():
-                print("   Use 'v' to toggle voice input mode")
-                print(f"   Voice status: {self.voice_handler.get_status()}")
-            else:
-                print("   Voice input not available")
     
     def get_input(self, prompt: str = "> ") -> str:
-        """Get user input with command history support and voice input.
+        """Get user input with command history support.
         
         Args:
             prompt: Input prompt to display
@@ -401,18 +176,8 @@ class InputHandler:
             User input string
         """
         try:
-            # Check for voice input activation
-            if self.voice_handler.is_available() and not self.voice_active:
-                # Use input() with prompt to keep cursor on same line
-                user_input = input(f"💬 {prompt} (press 'v' for voice input)").strip()
-            else:
-                # Use input() with prompt to keep cursor on same line
-                user_input = input(prompt).strip()
-            
-            # Handle voice input toggle
-            if user_input.lower() == 'v' and self.voice_handler.is_available():
-                self._toggle_voice_input()
-                return ""
+            # Use input() with prompt to keep cursor on same line
+            user_input = input(prompt).strip()
             
             # Add to history if not empty
             if user_input:
@@ -427,57 +192,6 @@ class InputHandler:
             # Handle Ctrl+C
             print("\n⏹️  Input cancelled")
             return ""
-    
-    def _toggle_voice_input(self):
-        """Toggle voice input on/off."""
-        if not self.voice_handler.is_available():
-            print("❌ Voice input not available")
-            return
-        
-        if self.voice_active:
-            self.voice_handler.stop_listening()
-            self.voice_active = False
-            print("🔇 Voice input deactivated")
-        else:
-            print("🎤 Voice input activated - speak your command")
-            print("   Press 'v' again to deactivate")
-            self.voice_handler.start_listening(self._on_voice_command)
-            self.voice_active = True
-    
-    def _on_voice_command(self, text: str):
-        """Handle voice command recognition.
-        
-        Args:
-            text: Recognized voice command text
-        """
-        if self.debug:
-            print(f"🎤 Voice command recognized: {text}")
-        
-        # Add to history
-        self.history.add_command(text)
-        
-        # Display the command
-        print(f"🎤 Voice command: {text}")
-        
-        # Stop listening after command is received
-        self.voice_handler.stop_listening()
-        self.voice_active = False
-    
-    def get_voice_status(self) -> str:
-        """Get the current voice input status.
-        
-        Returns:
-            Status string describing voice input
-        """
-        return self.voice_handler.get_status()
-    
-    def is_voice_available(self) -> bool:
-        """Check if voice input is available.
-        
-        Returns:
-            True if voice input is available, False otherwise
-        """
-        return self.voice_handler.is_available()
     
     def show_history(self, limit: int = 20):
         """Display recent command history.
@@ -538,26 +252,6 @@ class InputHandler:
         print(f"Unique commands: {stats['unique_commands']}")
         print(f"History file: {stats['history_file']}")
         print(f"Max history size: {stats['max_history']}")
-    
-    def show_voice_status(self):
-        """Display voice input status."""
-        print("🎤 Voice Input Status:")
-        print("-" * 30)
-        print(f"Available: {'✅ Yes' if self.is_voice_available() else '❌ No'}")
-        print(f"Status: {self.get_voice_status()}")
-        if self.voice_active:
-            print("Active: ✅ Listening for commands")
-        else:
-            print("Active: 🔇 Not listening")
-        print("-" * 30)
-        if self.is_voice_available():
-            print("Usage: Press 'v' during input to toggle voice mode")
-            print("       Speak your command clearly when voice mode is active")
-        else:
-            print("To enable voice input:")
-            print("1. Install vosk and pyaudio: pip install vosk pyaudio")
-            print("2. Download a Vosk model from https://alphacephei.com/vosk/models")
-            print("3. Extract to ~/.termagent/models/")
 
 
 def create_input_handler(history_file: Optional[str] = None, debug: bool = False) -> InputHandler:
