@@ -41,6 +41,7 @@ def main():
     print("  • Navigate command history with ↑/↓ arrow keys")
     print("  • Search and manage command history")
     print("  • Process commands from files using --file flag")
+    print("  • Accept voice commands using Google Speech Recognition")
     print()
     
     # Create the agent graph
@@ -172,10 +173,31 @@ def main():
     print("  history     - Show command history")
     print("  search <q>  - Search command history")
     print("  clear       - Clear command history")
+    print("  voice       - Show voice input status")
+    print("  Note: Voice commands are automatically processed through the router")
     print("-" * 30)
     
-    # Create input handler with command history
-    input_handler = create_input_handler(debug=args.debug)
+    # Set up command processor for voice commands
+    def process_voice_command(command: str):
+        """Process voice commands through the router."""
+        try:
+            return process_command_with_cwd(command, graph, current_working_directory, debug=args.debug, no_confirm=args.no_confirm)
+        except Exception as e:
+            print(f"❌ Error processing voice command: {str(e)}")
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+            return None
+    
+    # Create input handler with command history and command processor
+    input_handler = create_input_handler(debug=args.debug, command_processor=process_voice_command)
+    
+    # Show voice input status if available
+    if input_handler.is_voice_available():
+        print(f"🎤 Voice input: {input_handler.get_voice_status()}")
+        print("   Press 'v' during input to activate voice mode")
+        print("   Voice commands are automatically routed through the agent system")
+        print("-" * 30)
     
     # Track working directory across commands
     current_working_directory = os.getcwd()
@@ -201,7 +223,9 @@ def main():
             elif command.lower() == 'stats':
                 input_handler.get_history_stats()
                 continue
-
+            elif command.lower() == 'voice':
+                input_handler.show_voice_status()
+                continue
 
             
             # Process the command with current working directory

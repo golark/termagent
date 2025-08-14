@@ -9,17 +9,17 @@ import readline
 import atexit
 import threading
 import time
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Any
 from pathlib import Path
 
 try:
     import pyaudio
     import numpy as np
-    from vosk import Model, KaldiRecognizer
-    VOSK_AVAILABLE = True
+    import speech_recognition as sr
+    SPEECH_RECOGNITION_AVAILABLE = True
 except ImportError:
-    VOSK_AVAILABLE = False
-    print("⚠️  Voice input not available: Install vosk and pyaudio for voice commands")
+    SPEECH_RECOGNITION_AVAILABLE = False
+    print("⚠️  Voice input not available: Install speechrecognition and pyaudio for voice commands")
 
 
 class CommandHistory:
@@ -159,34 +159,23 @@ class CommandHistory:
 
 
 class VoiceInputHandler:
-    """Handles voice input using Vosk speech recognition."""
+    """Handles voice input using speech recognition."""
     
-    def __init__(self, model_path: Optional[str] = None, debug: bool = False):
+    def __init__(self, debug: bool = False):
         """Initialize voice input handler.
         
         Args:
-            model_path: Path to Vosk model (defaults to ~/.termagent/models/vosk-model-small-en-us)
             debug: Enable debug mode
         """
         self.debug = debug
         self.is_listening = False
         self.audio_thread = None
         self.recognizer = None
-        self.audio_stream = None
-        self.audio = None
-        self.model = None
         
-        if not VOSK_AVAILABLE:
+        if not SPEECH_RECOGNITION_AVAILABLE:
             self._debug_print("Voice input not available - missing dependencies")
             return
         
-        # Set up model path
-        if model_path is None:
-            model_dir = Path.home() / ".termagent" / "models"
-            model_dir.mkdir(parents=True, exist_ok=True)
-            model_path = str(model_dir / "vosk-model-small-en-us")
-        
-        self.model_path = model_path
         self._setup_voice_recognition()
     
     def _debug_print(self, message: str):
@@ -195,26 +184,21 @@ class VoiceInputHandler:
             print(f"voice_handler: {message}")
     
     def _setup_voice_recognition(self):
-        """Set up Vosk model and audio components."""
+        """Set up speech recognition components."""
         try:
-            # Check if model exists
-            if not os.path.exists(self.model_path):
-                self._debug_print(f"Model not found at {self.model_path}")
-                self._debug_print("Download a Vosk model from https://alphacephei.com/vosk/models")
-                return
+            # Initialize speech recognizer
+            self._debug_print("Initializing speech recognition")
+            self.recognizer = sr.Recognizer()
             
-            # Load Vosk model
-            self._debug_print(f"Loading Vosk model from {self.model_path}")
-            self.model = Model(self.model_path)
-            self.recognizer = KaldiRecognizer(self.model, 16000)
+            # Configure recognition settings
+            self.recognizer.energy_threshold = 4000  # Adjust based on your microphone
+            self.recognizer.dynamic_energy_threshold = True
+            self.recognizer.pause_threshold = 0.8
             
-            # Initialize PyAudio
-            self.audio = pyaudio.PyAudio()
-            self._debug_print("Voice recognition initialized successfully")
+            self._debug_print("Speech recognition initialized successfully")
             
         except Exception as e:
-            self._debug_print(f"Failed to initialize voice recognition: {e}")
-            self.model = None
+            self._debug_print(f"Failed to initialize speech recognition: {e}")
     
     def start_listening(self, callback: Callable[[str], None]):
         """Start listening for voice input in a background thread.
@@ -222,72 +206,71 @@ class VoiceInputHandler:
         Args:
             callback: Function to call when voice input is detected
         """
-        if not self.model or self.is_listening:
+        if not self.recognizer:
+            self._debug_print("Speech recognition not available")
+            return
+        
+        if self.is_listening:
+            self._debug_print("Already listening")
             return
         
         self.is_listening = True
-        self.audio_thread = threading.Thread(target=self._listen_loop, args=(callback,), daemon=True)
+        self.audio_thread = threading.Thread(target=self._listen_loop, args=(callback,))
+        self.audio_thread.daemon = True
         self.audio_thread.start()
         self._debug_print("Started listening for voice input")
     
     def stop_listening(self):
         """Stop listening for voice input."""
         self.is_listening = False
-        if self.audio_thread:
-            self.audio_thread.join(timeout=1.0)
-        self._cleanup_audio()
         self._debug_print("Stopped listening for voice input")
     
     def _listen_loop(self, callback: Callable[[str], None]):
         """Main listening loop for voice input."""
         try:
-            # Open audio stream
-            self.audio_stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=16000,
-                input=True,
-                frames_per_buffer=8192
-            )
-            
-            self._debug_print("Audio stream opened, listening...")
-            
-            while self.is_listening:
-                try:
-                    # Read audio data
-                    data = self.audio_stream.read(8192, exception_on_overflow=False)
-                    
-                    if self.recognizer.AcceptWaveform(data):
-                        # Process the recognized speech
-                        result = self.recognizer.Result()
-                        import json
-                        result_dict = json.loads(result)
+            with sr.Microphone() as source:
+                self._debug_print("Using microphone as audio source")
+                
+                # Adjust for ambient noise
+                self._debug_print("Adjusting for ambient noise... Please wait...")
+                self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                self._debug_print("Ambient noise adjustment complete")
+                
+                while self.is_listening:
+                    try:
+                        self._debug_print("Listening for speech...")
+                        audio = self.recognizer.listen(source, timeout=1, phrase_time_limit=10)
                         
-                        if result_dict.get('text', '').strip():
-                            text = result_dict['text'].strip()
-                            self._debug_print(f"Recognized: {text}")
-                            
-                            # Call the callback with the recognized text
-                            callback(text)
-                            
-                except Exception as e:
-                    self._debug_print(f"Error in audio processing: {e}")
-                    break
+                        if not self.is_listening:
+                            break
+                        
+                        self._debug_print("Speech detected, processing...")
+                        
+                        # Use Google's speech recognition (free, requires internet)
+                        try:
+                            text = self.recognizer.recognize_google(audio)
+                            if text and self.is_listening:
+                                self._debug_print(f"Recognized: {text}")
+                                callback(text)
+                        except sr.UnknownValueError:
+                            self._debug_print("Speech was unintelligible")
+                        except sr.RequestError as e:
+                            self._debug_print(f"Could not request results from speech recognition service: {e}")
+                        except Exception as e:
+                            self._debug_print(f"Error during speech recognition: {e}")
                     
+                    except sr.WaitTimeoutError:
+                        # No speech detected, continue listening
+                        continue
+                    except Exception as e:
+                        self._debug_print(f"Error in listening loop: {e}")
+                        break
+                        
         except Exception as e:
-            self._debug_print(f"Error in listening loop: {e}")
+            self._debug_print(f"Error setting up microphone: {e}")
         finally:
-            self._cleanup_audio()
-    
-    def _cleanup_audio(self):
-        """Clean up audio resources."""
-        if self.audio_stream:
-            try:
-                self.audio_stream.stop_stream()
-                self.audio_stream.close()
-            except:
-                pass
-            self.audio_stream = None
+            self.is_listening = False
+            self._debug_print("Listening loop ended")
     
     def is_available(self) -> bool:
         """Check if voice input is available.
@@ -295,7 +278,7 @@ class VoiceInputHandler:
         Returns:
             True if voice input is available, False otherwise
         """
-        return VOSK_AVAILABLE and self.model is not None
+        return SPEECH_RECOGNITION_AVAILABLE and self.recognizer is not None
     
     def get_status(self) -> str:
         """Get the status of voice input.
@@ -303,10 +286,10 @@ class VoiceInputHandler:
         Returns:
             Status string describing voice input availability
         """
-        if not VOSK_AVAILABLE:
+        if not SPEECH_RECOGNITION_AVAILABLE:
             return "Voice input not available - missing dependencies"
-        elif not self.model:
-            return "Voice input not available - model not loaded"
+        elif not self.recognizer:
+            return "Voice input not available - recognition not initialized"
         elif self.is_listening:
             return "Voice input active - listening for commands"
         else:
@@ -316,15 +299,19 @@ class VoiceInputHandler:
 class InputHandler:
     """Handles user input with command history navigation and voice input."""
     
-    def __init__(self, history_file: Optional[str] = None, debug: bool = False):
+    def __init__(self, history_file: Optional[str] = None, debug: bool = False, command_processor: Optional[Callable[[str], Any]] = None):
         """Initialize input handler.
         
         Args:
             history_file: Path to history file
             debug: Enable debug mode
+            command_processor: Optional callback function to process commands
         """
         self.debug = debug
         self.history = CommandHistory(history_file)
+        self.voice_handler = VoiceInputHandler(debug=debug)
+        self.voice_active = False
+        self.command_processor = command_processor
         self._setup_input_handling()
     
     def _setup_input_handling(self):
@@ -333,9 +320,22 @@ class InputHandler:
             print("🔧 Input handler initialized with command history navigation")
             print("   Use ↑/↓ arrow keys to navigate command history")
             print("   Use Ctrl+R to search history (if supported)")
+            if self.voice_handler.is_available():
+                print("   Use 'v' to toggle voice input mode")
+                print(f"   Voice status: {self.voice_handler.get_status()}")
+            else:
+                print("   Voice input not available")
+    
+    def set_command_processor(self, processor: Callable[[str], Any]):
+        """Set the command processor callback.
+        
+        Args:
+            processor: Function to process commands
+        """
+        self.command_processor = processor
     
     def get_input(self, prompt: str = "> ") -> str:
-        """Get user input with command history support.
+        """Get user input with command history support and voice input.
         
         Args:
             prompt: Input prompt to display
@@ -344,8 +344,18 @@ class InputHandler:
             User input string
         """
         try:
-            # Get input from user with prompt
-            user_input = input(prompt).strip()
+            # Check for voice input activation
+            if self.voice_handler.is_available() and not self.voice_active:
+                # Use input() with prompt to keep cursor on same line
+                user_input = input(f"💬 {prompt} (press 'v' for voice input)").strip()
+            else:
+                # Use input() with prompt to keep cursor on same line
+                user_input = input(prompt).strip()
+            
+            # Handle voice input toggle
+            if user_input.lower() == 'v' and self.voice_handler.is_available():
+                self._toggle_voice_input()
+                return ""
             
             # Add to history if not empty
             if user_input:
@@ -391,6 +401,34 @@ class InputHandler:
         
         # Display the command
         print(f"🎤 Voice command: {text}")
+        
+        # Process the voice command through the router if processor is available
+        if self.command_processor and text.strip():
+            try:
+                if self.debug:
+                    print(f"🔄 Processing voice command through router: {text}")
+                result = self.command_processor(text.strip())
+                
+                # Display the result if it's available
+                if result and hasattr(result, 'get'):
+                    messages = result.get("messages", [])
+                    ai_messages = [msg for msg in messages if hasattr(msg, 'content') and 
+                                  msg.__class__.__name__ == 'AIMessage']
+                    
+                    if ai_messages:
+                        response = ai_messages[-1].content
+                        print(response)
+                    
+                    # Show routing information
+                    routed_to = result.get("routed_to")
+                    if routed_to:
+                        print(f"📍 Routed to: {routed_to}")
+                        
+            except Exception as e:
+                print(f"❌ Error processing voice command: {str(e)}")
+                if self.debug:
+                    import traceback
+                    traceback.print_exc()
         
         # Stop listening after command is received
         self.voice_handler.stop_listening()
@@ -488,19 +526,20 @@ class InputHandler:
             print("       Speak your command clearly when voice mode is active")
         else:
             print("To enable voice input:")
-            print("1. Install vosk and pyaudio: pip install vosk pyaudio")
-            print("2. Download a Vosk model from https://alphacephei.com/vosk/models")
-            print("3. Extract to ~/.termagent/models/")
+            print("1. Install speechrecognition and pyaudio: pip install speechrecognition pyaudio")
+            print("2. Ensure you have a working microphone")
+            print("3. Internet connection required for Google Speech Recognition")
 
 
-def create_input_handler(history_file: Optional[str] = None, debug: bool = False) -> InputHandler:
+def create_input_handler(history_file: Optional[str] = None, debug: bool = False, command_processor: Optional[Callable[[str], Any]] = None) -> InputHandler:
     """Create and configure an input handler.
     
     Args:
         history_file: Path to history file
         debug: Enable debug mode
+        command_processor: Optional callback function to process commands
         
     Returns:
         Configured InputHandler instance
     """
-    return InputHandler(history_file, debug)
+    return InputHandler(history_file, debug, command_processor)

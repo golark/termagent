@@ -13,6 +13,7 @@ help:
 	@echo "  make clean        - Clean cache files"
 	@echo "  make voice-setup  - Set up voice input (download Vosk model)"
 	@echo "  make voice-demo   - Run voice input demo"
+	@echo "  make voice-test   - Test voice input functionality"
 
 # Install dependencies
 install:
@@ -54,3 +55,8 @@ voice-setup:
 voice-demo:
 	@echo "🎤 Running voice input demo..."
 	python scripts/voice_demo.py
+
+# Test voice input
+voice-test:
+	@echo "🎤 Testing voice input..."
+	python scripts/test_voice.py
