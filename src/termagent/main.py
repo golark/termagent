@@ -32,6 +32,7 @@ def main():
     print("  • Handle file operations through shell commands")
     print("  • Handle Docker operations through shell commands")
     print("  • Detect and route Kubernetes commands to a specialized k8s agent")
+    print("  • Handle package management commands (brew, apt, pip, npm, etc.)")
     print("  • Edit files with vim or nano")
     print("  • Handle regular commands")
     print("  • Use MCP for agent communication")
@@ -171,7 +172,6 @@ def main():
     print("  history     - Show command history")
     print("  search <q>  - Search command history")
     print("  clear       - Clear command history")
-    print("  stats       - Show history statistics")
     print("-" * 30)
     
     # Create input handler with command history
@@ -201,6 +201,7 @@ def main():
             elif command.lower() == 'stats':
                 input_handler.get_history_stats()
                 continue
+
 
             
             # Process the command with current working directory

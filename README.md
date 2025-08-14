@@ -1,6 +1,6 @@
 # TermAgent
 
-A LangGraph-based agent system with intelligent routing and MCP (Model Context Protocol) integration for handling git commands.
+A LangGraph-based agent system with intelligent routing, MCP (Model Context Protocol) integration, and voice command input using Vosk speech recognition.
 
 ## Features
 
@@ -9,6 +9,8 @@ A LangGraph-based agent system with intelligent routing and MCP (Model Context P
 - 🌐 **MCP Integration**: Uses Model Context Protocol for agent communication
 - 🎯 **Git Command Handling**: Specialized git agent for all git operations
 - 💬 **Interactive Interface**: Command-line interface for easy interaction
+- 🎤 **Voice Input**: Accept voice commands using Vosk speech recognition
+- 📚 **Command History**: Navigate and search through command history
 
 ## Architecture
 
@@ -45,6 +47,27 @@ TermAgent
    uv run main.py
    ```
 
+### Voice Input Setup
+
+TermAgent supports voice commands using Vosk speech recognition. To enable voice input:
+
+1. **Install voice dependencies**:
+   ```bash
+   uv add vosk pyaudio numpy
+   ```
+
+2. **Download a Vosk model** (run from project root):
+   ```bash
+   python scripts/setup_voice.py
+   ```
+   
+   This will download and configure a speech recognition model (~42 MB for small model).
+
+3. **Alternative manual setup**:
+   - Download a model from [Vosk Models](https://alphacephei.com/vosk/models)
+   - Extract to `~/.termagent/models/`
+   - Recommended: `vosk-model-small-en-us-0.15` for basic commands
+
 ## Usage
 
 ### Interactive Mode
@@ -73,6 +96,29 @@ termagent> git status
 ------------------------------
 ```
 
+### Voice Commands
+
+TermAgent supports voice input for hands-free operation:
+
+1. **Activate voice mode**: Press `v` during input
+2. **Speak your command**: Clearly state what you want to do
+3. **Deactivate voice mode**: Press `v` again
+
+**Example voice commands**:
+- "list files in current directory"
+- "git status"
+- "create a new folder called projects"
+- "show me the current working directory"
+- "install package with brew"
+- "update packages with apt"
+- "search for packages with pip"
+
+**Voice input features**:
+- Automatic command recognition and execution
+- Command history integration
+- Background listening with thread safety
+- Support for natural language commands
+
 ### Supported Commands
 
 #### Git Commands
@@ -90,6 +136,48 @@ termagent> git status
 #### Regular Commands
 - Any non-git command will be handled by the regular command handler
 
+#### Package Management Commands
+TermAgent supports a wide range of package managers across different operating systems:
+
+**macOS - Homebrew**:
+- `brew install <package>` - Install packages
+- `brew update` - Update Homebrew
+- `brew upgrade` - Upgrade packages
+- `brew list` - List installed packages
+- `brew search <query>` - Search for packages
+
+**Ubuntu/Debian - APT**:
+- `apt install <package>` - Install packages
+- `apt update` - Update package lists
+- `apt upgrade` - Upgrade packages
+- `apt search <query>` - Search for packages
+- `apt list` - List packages
+
+**Python - pip**:
+- `pip install <package>` - Install Python packages
+- `pip list` - List installed packages
+- `pip search <query>` - Search for packages
+- `pip freeze` - Show requirements format
+
+**Node.js - npm/yarn**:
+- `npm install <package>` - Install Node.js packages
+- `npm list` - List installed packages
+- `npm search <query>` - Search for packages
+- `yarn add <package>` - Install with Yarn
+
+**Other Package Managers**:
+- `cargo install <package>` - Rust packages
+- `go get <package>` - Go modules
+- `gem install <package>` - Ruby gems
+- `mvn install` - Maven packages
+- `pacman -S <package>` - Arch Linux packages
+
+**Get Help**:
+- `help brew` - Homebrew help
+- `help apt` - APT help
+- `help pip` - pip help
+- `help npm` - npm help
+
 ## Project Structure
 
 ```
@@ -101,7 +189,10 @@ termagent/
 │   └── git_agent.py          # Git-specific agent
 ├── mcp_integration.py         # MCP communication layer
 ├── termagent_graph.py        # LangGraph workflow definition
+├── input_handler.py          # Input handling with voice support
 ├── main.py                   # Main application entry point
+├── scripts/
+│   └── setup_voice.py        # Voice model setup script
 ├── pyproject.toml           # Project configuration
 └── README.md               # This file
 ```

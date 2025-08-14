@@ -20,6 +20,11 @@ dev = [
     "black>=25.1.0",
     "flake8>=7.3.0",
 ]
+voice = [
+    "vosk>=0.3.44",
+    "pyaudio>=0.2.11",
+    "numpy>=1.24.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/termagent"]
