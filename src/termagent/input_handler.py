@@ -161,10 +161,8 @@ class InputHandler:
     
     def _setup_input_handling(self):
         """Set up input handling and display help."""
-        if self.debug:
-            print("🔧 Input handler initialized with command history navigation")
-            print("   Use ↑/↓ arrow keys to navigate command history")
-            print("   Use Ctrl+R to search history (if supported)")
+        # Debug messages removed as requested
+        pass
     
     def get_input(self, prompt: str = "> ") -> str:
         """Get user input with command history support.

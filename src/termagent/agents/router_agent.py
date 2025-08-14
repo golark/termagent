@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
 from termagent.shell_commands import ShellCommandDetector
 from termagent.directory_context import get_directory_context, get_relevant_files_context
+from termagent.task_complexity import TaskComplexityAnalyzer
 
 
 class QueryDetector:
@@ -90,6 +91,9 @@ class RouterAgent(BaseAgent):
         # Initialize query detector
         self.query_detector = QueryDetector(debug=debug)
         
+        # Initialize task complexity analyzer
+        self.complexity_analyzer = TaskComplexityAnalyzer(debug=debug)
+        
         # Initialize LLM for task breakdown if available
         self._initialize_llm()
     
@@ -148,6 +152,18 @@ class RouterAgent(BaseAgent):
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
         """Use LLM to intelligently break down a task into steps."""
         
+        # Analyze task complexity to determine the appropriate LLM model
+        complexity_analysis = self.complexity_analyzer.analyze_complexity(task)
+        recommended_model = complexity_analysis['recommended_model']
+        
+        self._debug_print(f"Task complexity analysis: {complexity_analysis['complexity_score']} score, {complexity_analysis['reasoning_score']} reasoning")
+        self._debug_print(f"Using model: {recommended_model}")
+        
+        # Reinitialize LLM with the recommended model if different from current
+        if not self.llm or getattr(self.llm, 'model_name', '') != recommended_model:
+            self._debug_print(f"Reinitializing LLM with {recommended_model}")
+            self._initialize_llm(recommended_model)
+        
         # Get directory context for the LLM
         try:
             current_dir = os.getcwd()
@@ -163,9 +179,26 @@ class RouterAgent(BaseAgent):
         except Exception as e:
             context_info = f"⚠️  Could not get directory context: {e}\n\n"
         
+        # Customize system prompt based on complexity
+        if recommended_model == "gpt-4o":
+            complexity_note = """
+IMPORTANT: This is a complex task requiring advanced reasoning. Use GPT-4o's enhanced capabilities to:
+- Provide detailed, thoughtful analysis
+- Consider multiple approaches and edge cases
+- Break down complex logic into clear, actionable steps
+- Consider performance, security, and maintainability implications
+- Provide explanations for why certain approaches are chosen
+"""
+        else:
+            complexity_note = """
+This is a straightforward task. Provide a simple, direct breakdown focusing on efficiency.
+"""
+        
         system_prompt = f"""You are a task analysis expert. Given a task, break it down into the MINIMAL number of logical steps and assign the most appropriate agent for each step.
 
 {context_info}
+
+{complexity_note}
 
 CRITICAL RULES:
 1. Use the FEWEST possible steps to accomplish the task
