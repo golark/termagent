@@ -122,8 +122,119 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
     """Handle file and Docker queries by converting them to appropriate shell commands."""
     messages = state.get("messages", [])
     
+    # Check if this query should use GPT-4o for complex analysis
+    should_use_gpt4o = state.get("should_use_gpt4o", False)
+    query_complexity = state.get("query_complexity", {})
+    
+    if should_use_gpt4o:
+        # Use GPT-4o for complex shell queries
+        if state.get("debug", False):
+            print("fileagent: 🧠 Using GPT-4o for complex shell query analysis")
+        
+        # Get directory context for better analysis
+        try:
+            import os
+            current_dir = state.get("current_working_directory", os.getcwd())
+            from termagent.directory_context import get_directory_context, get_relevant_files_context
+            
+            directory_context = get_directory_context(current_dir, max_depth=2, max_files_per_dir=15)
+            relevant_files = get_relevant_files_context(current_dir)
+            
+            context_info = f"""📁 CURRENT WORKSPACE CONTEXT:
+{directory_context}
+
+{relevant_files}
+
+"""
+        except Exception as e:
+            context_info = f"⚠️  Could not get directory context: {e}\n\n"
+        
+        # Use GPT-4o to analyze the query and provide comprehensive guidance
+        try:
+            from termagent.agents.base_agent import BaseAgent
+            base_agent = BaseAgent("shell_query_analyzer", debug=state.get("debug", False))
+            
+            if base_agent._initialize_llm("gpt-4o"):
+                # Create system prompt for shell query analysis
+                system_prompt = f"""You are an expert shell command analyst using GPT-4o. Given a user query about files, directories, Docker, or system information, provide comprehensive analysis and step-by-step guidance.
+
+{context_info}
+
+Your task is to:
+1. Understand what the user is asking about
+2. Analyze the current workspace context
+3. Provide the most appropriate shell command(s) to answer their query
+4. Explain why this command is the best choice
+5. Provide alternative approaches if relevant
+6. Consider edge cases and potential issues
+7. Suggest follow-up commands if helpful
+
+IMPORTANT GUIDELINES:
+- Be specific and actionable
+- Consider the current directory and file structure
+- Suggest the most efficient and reliable commands
+- Explain the reasoning behind your recommendations
+- Consider multiple ways to answer the query
+- Be helpful and informative
+- Focus on practical, executable solutions
+
+For each recommendation, provide:
+- The specific shell command to use
+- Why this command is appropriate
+- What the expected output will be
+- Any potential issues or considerations
+- Alternative approaches if relevant
+
+Return your response in a clear, structured format that helps the user understand how to answer their query effectively."""
+
+                # Create messages for LLM
+                llm_messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Analyze this shell-related query and provide guidance: {query}"}
+                ]
+                
+                # Get response from GPT-4o
+                llm_response = base_agent.llm.invoke(llm_messages)
+                analysis_content = llm_response.content.strip()
+                
+                # Create comprehensive response
+                analysis_response = f"🧠 GPT-4o Shell Query Analysis Complete!\n\n"
+                analysis_response += f"🔍 Query: {query}\n"
+                analysis_response += f"📋 Type: Shell Query\n"
+                analysis_response += f"🧠 Complexity: {query_complexity.get('complexity_score', 'Unknown')} score\n\n"
+                analysis_response += f"📋 Analysis:\n{analysis_content}\n\n"
+                analysis_response += "💡 You can now follow these recommendations, or ask me to execute specific commands for you."
+                
+                messages.append(AIMessage(content=analysis_response))
+                
+                return {
+                    **state,
+                    "messages": messages
+                }
+                
+        except Exception as e:
+            if state.get("debug", False):
+                print(f"fileagent: ⚠️ GPT-4o analysis failed: {e}, falling back to standard approach")
+    
+    # Standard approach for simple queries or when GPT-4o is not available
     # Use LLM to determine the appropriate command for the query
     command, description, response_type = _analyze_query_with_llm(query)
+    
+    # Check if the command is valid
+    if not command or command.strip() == "":
+        # No specific command needed - this is an analysis query
+        response = f"🔍 Query: {query}\n"
+        response += f"📋 Type: Analysis Query\n"
+        response += f"💡 Description: {description}\n\n"
+        response += "This query requires analysis rather than a specific shell command. "
+        response += "Consider rephrasing it as a more specific question about files, directories, or system information."
+        
+        messages.append(AIMessage(content=response))
+        
+        return {
+            **state,
+            "messages": messages
+        }
     
     # Create response message
     response = f"🔍 Query: {query}\n"
@@ -186,6 +297,20 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
 
 def _analyze_query_with_llm(query: str) -> tuple[str, str, str]:
     """Use LLM to analyze a query and determine the appropriate command, description, and response type."""
+    
+    # Check if this is an analysis query that doesn't need a shell command
+    analysis_indicators = [
+        'how would you recommend', 'what are the pros and cons', 'analyze', 'compare',
+        'what would happen if', 'explain why', 'describe how', 'recommend',
+        'suggest', 'best practices', 'alternatives', 'considerations'
+    ]
+    
+    query_lower = query.lower()
+    is_analysis_query = any(indicator in query_lower for indicator in analysis_indicators)
+    
+    if is_analysis_query:
+        # This is an analysis query that doesn't need a specific shell command
+        return "", f"Analysis query requiring high-level reasoning", "analysis"
     
     # System prompt for query analysis
     system_prompt = """You are a shell command expert. Given a user query, determine the most appropriate shell command to answer it.
@@ -381,23 +506,139 @@ def handle_direct_execution(state: AgentState) -> AgentState:
 
 
 def handle_query(state: AgentState) -> AgentState:
-    """Handle general queries that don't fit into specific agent categories."""
+    """Handle general queries using GPT-4o to determine multiple steps to answer them."""
     messages = state.get("messages", [])
     query = state.get("last_command", "Unknown query")
     query_type = state.get("query_type", "general_query")
     
-    # Create response for general queries
+    # Create initial response indicating we're using GPT-4o for analysis
     response = f"🔍 Query: {query}\n"
     response += f"📋 Type: {query_type}\n\n"
-    response += "This query doesn't fit into a specific agent category. "
-    response += "You can try rephrasing it as a more specific question or command.\n\n"
-    response += "Examples:\n"
-    response += "• For K8s: 'how many pods are running?' or 'get all deployments'\n"
-    response += "• For Docker: 'how many containers are running?' or 'list all images'\n"
-    response += "• For Git: 'what branch am I on?' or 'show git status'\n"
-    response += "• For files: 'what files are in this directory?' or 'ls -la'"
-    
+    response += "🧠 Using GPT-4o to analyze this query and provide a step-by-step approach..."
     messages.append(AIMessage(content=response))
+    
+    # Use GPT-4o to analyze the query and provide multiple actionable steps
+    try:
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("query_analyzer", debug=state.get("debug", False))
+        
+        # Initialize with GPT-4o specifically for complex query analysis
+        if base_agent._initialize_llm("gpt-4o"):
+            if state.get("debug", False):
+                print("query_analyzer | 🧠 Using GPT-4o for multi-step query analysis")
+            
+            # Get directory context for better analysis
+            try:
+                import os
+                current_dir = state.get("current_working_directory", os.getcwd())
+                from termagent.directory_context import get_directory_context, get_relevant_files_context
+                
+                directory_context = get_directory_context(current_dir, max_depth=2, max_files_per_dir=15)
+                relevant_files = get_relevant_files_context(current_dir)
+                
+                context_info = f"""📁 CURRENT WORKSPACE CONTEXT:
+{directory_context}
+
+{relevant_files}
+
+"""
+            except Exception as e:
+                context_info = f"⚠️  Could not get directory context: {e}\n\n"
+            
+            # Create system prompt for multi-step query analysis
+            system_prompt = f"""You are an expert query analyzer using GPT-4o. Given a user query, analyze it and provide a structured, multi-step approach to answer it effectively.
+
+{context_info}
+
+Your task is to:
+1. Understand what the user is asking
+2. Break down the query into 3-7 logical, actionable steps
+3. Provide specific guidance for each step
+4. Suggest relevant commands, tools, or approaches when appropriate
+5. Consider the current workspace context
+6. Provide explanations for why certain approaches are chosen
+
+IMPORTANT REQUIREMENTS:
+- Break down the query into MULTIPLE actionable steps (3-7 steps)
+- Each step must be specific and actionable
+- Provide clear guidance on what to do at each step
+- Suggest specific commands or tools when relevant
+- Consider the current workspace structure
+- Be helpful and informative
+- Focus on practical, executable solutions
+
+STEP STRUCTURE:
+For each step, provide:
+1. Step number and title
+2. Clear description of what to do
+3. Specific commands or tools to use (if applicable)
+4. Expected outcome or what to look for
+5. Any considerations or warnings
+
+Return your response in a clear, structured format with numbered steps that the user can follow sequentially.
+
+Example format:
+Step 1: [Title]
+Description: [What to do]
+Commands: [Specific commands if applicable]
+Expected Outcome: [What you should see/achieve]
+
+Step 2: [Title]
+Description: [What to do]
+Commands: [Specific commands if applicable]
+Expected Outcome: [What you should see/achieve]
+
+[Continue for all steps...]"""
+
+            # Create messages for LLM
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Analyze this query and provide multiple actionable steps to answer it: {query}"}
+            ]
+            
+            # Get response from GPT-4o
+            llm_response = base_agent.llm.invoke(llm_messages)
+            analysis_content = llm_response.content.strip()
+            
+            # Create comprehensive response with multi-step guidance
+            analysis_response = f"🧠 GPT-4o Multi-Step Analysis Complete!\n\n"
+            analysis_response += f"📋 Query: {query}\n"
+            analysis_response += f"🔍 Type: {query_type}\n\n"
+            analysis_response += f"📋 Multi-Step Approach:\n{analysis_content}\n\n"
+            analysis_response += "💡 Follow these steps sequentially to answer your query. "
+            analysis_response += "Each step builds on the previous one to provide a comprehensive solution."
+            
+            messages.append(AIMessage(content=analysis_response))
+            
+        else:
+            # Fallback if GPT-4o is not available
+            fallback_response = f"⚠️ GPT-4o not available for multi-step query analysis\n\n"
+            fallback_response += f"🔍 Query: {query}\n"
+            fallback_response += f"📋 Type: {query_type}\n\n"
+            fallback_response += "This query doesn't fit into a specific agent category. "
+            fallback_response += "You can try rephrasing it as a more specific question or command.\n\n"
+            fallback_response += "Examples:\n"
+            fallback_response += "• For K8s: 'how many pods are running?' or 'get all deployments'\n"
+            fallback_response += "• For Docker: 'how many containers are running?' or 'list all images'\n"
+            fallback_response += "• For Git: 'what branch am I on?' or 'show git status'\n"
+            fallback_response += "• For files: 'what files are in this directory?' or 'ls -la'"
+            
+            messages.append(AIMessage(content=fallback_response))
+            
+    except Exception as e:
+        # Error handling
+        error_response = f"❌ Error during GPT-4o multi-step query analysis: {str(e)}\n\n"
+        error_response += f"🔍 Query: {query}\n"
+        error_response += f"📋 Type: {query_type}\n\n"
+        error_response += "This query doesn't fit into a specific agent category. "
+        error_response += "You can try rephrasing it as a more specific question or command.\n\n"
+        error_response += "Examples:\n"
+        error_response += "• For K8s: 'how many pods are running?' or 'get all deployments'\n"
+        error_response += "• For Docker: 'how many containers are running?' or 'list all images'\n"
+        error_response += "• For Git: 'what branch am I on?' or 'show git status'\n"
+        error_response += "• For files: 'what files are in this directory?' or 'ls -la'"
+        
+        messages.append(AIMessage(content=error_response))
     
     return {
         **state,
@@ -406,7 +647,7 @@ def handle_query(state: AgentState) -> AgentState:
 
 
 def handle_task_breakdown(state: AgentState) -> AgentState:
-    """Handle task breakdown and execute all steps in sequence."""
+    """Handle task breakdown and execute all steps in sequence with intelligent failure recovery."""
     messages = state.get("messages", [])
     task_breakdown = state.get("task_breakdown", [])
     current_step = state.get("current_step", 0)
@@ -420,75 +661,142 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
             "routed_to": "shell_command"
         }
     
-    # Execute all remaining steps in sequence
+    # Execute all remaining steps in sequence with intelligent failure recovery
     results = []
+    failed_steps = []
+    
     for i in range(current_step, total_steps):
         step_info = task_breakdown[i]
         step_num = step_info["step"]
         description = step_info["description"]
         agent = step_info["agent"]
-        command = step_info["command"]
+        command = step_info["description"]
         
         # Create step execution message
         step_message = f"🚀 Executing Step {step_num}: {description}\n"
         step_message += f"   Agent: {agent}\n"
-        step_message += f"   Command: {command}\n"
         step_message += f"   Progress: {i + 1}/{total_steps}"
         
         messages.append(AIMessage(content=step_message))
         
         # Execute the command (all commands are now shell commands)
-        try:
-            import subprocess
-            import shlex
+        step_success = False
+        step_attempts = 0
+        max_attempts = 3  # Allow up to 3 attempts per step
+        
+        while not step_success and step_attempts < max_attempts:
+            step_attempts += 1
             
-            # Check if command contains shell operators that require shell=True
-            shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-            needs_shell = any(op in command for op in shell_operators)
+            if step_attempts > 1:
+                retry_message = f"🔄 Retry Attempt {step_attempts} for Step {step_num}..."
+                messages.append(AIMessage(content=retry_message))
             
-            if needs_shell:
-                # Use shell=True for commands with operators
-                process_result = subprocess.run(
-                    command,
-                    shell=True,
-                    executable="/bin/zsh",
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-            else:
-                # Use shlex.split for simple commands without operators
-                args = shlex.split(command)
-                process_result = subprocess.run(
-                    args, 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=30
-                )
-            
-            if process_result.returncode == 0:
-                result = f"✅ Command executed: {command}"
-                if process_result.stdout.strip():
-                    result += f"\nOutput: {process_result.stdout.strip()}"
-            else:
-                result = f"❌ Command failed: {command}"
-                if process_result.stderr.strip():
-                    result += f"\nError: {process_result.stderr.strip()}"
+            try:
+                import subprocess
+                import shlex
+                
+                # Check if command contains shell operators that require shell=True
+                shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
+                needs_shell = any(op in command for op in shell_operators)
+                
+                if needs_shell:
+                    # Use shell=True for commands with operators
+                    process_result = subprocess.run(
+                        command,
+                        shell=True,
+                        executable="/bin/zsh",
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                else:
+                    # Use shlex.split for simple commands without operators
+                    args = shlex.split(command)
+                    process_result = subprocess.run(
+                        args, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=30
+                    )
+                
+                if process_result.returncode == 0:
+                    result = f"✅ Command executed: {command}"
+                    if process_result.stdout.strip():
+                        result += f"\nOutput: {process_result.stdout.strip()}"
+                    step_success = True
+                else:
+                    # Command failed - ask LLM for alternatives/fixes
+                    if step_attempts == 1:  # Only ask LLM on first failure
+                        alternative_command = _get_llm_alternative_for_failed_step(
+                            step_num, description, command, process_result.stderr.strip(), 
+                            state.get("debug", False)
+                        )
+                        
+                        if alternative_command and alternative_command != command:
+                            # Update the command for retry
+                            command = alternative_command
+                            step_info["command"] = alternative_command
+                            task_breakdown[i] = step_info
+                            
+                            alt_message = f"🔄 LLM suggested alternative approach for Step {step_num}:\n"
+                            alt_message += f"   New command: {alternative_command}"
+                            messages.append(AIMessage(content=alt_message))
                     
-        except subprocess.TimeoutExpired:
-            result = f"⏰ Command timed out: {command}"
-        except Exception as e:
-            result = f"❌ Command execution error: {command}\nError: {str(e)}"
+                    result = f"❌ Command failed: {command}"
+                    if process_result.stderr.strip():
+                        result += f"\nError: {process_result.stderr.strip()}"
+                        
+            except subprocess.TimeoutExpired:
+                result = f"⏰ Command timed out: {command}"
+                # Ask LLM for timeout alternatives
+                if step_attempts == 1:
+                    timeout_alternative = _get_llm_timeout_alternative(
+                        step_num, description, command, state.get("debug", False)
+                    )
+                    if timeout_alternative and timeout_alternative != command:
+                        command = timeout_alternative
+                        step_info["command"] = timeout_alternative
+                        task_breakdown[i] = step_info
+                        
+                        alt_message = f"🔄 LLM suggested timeout alternative for Step {step_num}:\n"
+                        alt_message += f"   New command: {timeout_alternative}"
+                        messages.append(AIMessage(content=alt_message))
+                        
+            except Exception as e:
+                result = f"❌ Command execution error: {command}\nError: {str(e)}"
+                # Ask LLM for error alternatives
+                if step_attempts == 1:
+                    error_alternative = _get_llm_error_alternative(
+                        step_num, description, command, str(e), state.get("debug", False)
+                    )
+                    if error_alternative and error_alternative != command:
+                        command = error_alternative
+                        step_info["command"] = alternative_command
+                        task_breakdown[i] = step_info
+                        
+                        alt_message = f"🔄 LLM suggested error alternative for Step {step_num}:\n"
+                        alt_message += f"   New command: {error_alternative}"
+                        messages.append(AIMessage(content=alt_message))
+            
+            if not step_success and step_attempts >= max_attempts:
+                failed_steps.append({
+                    "step": step_num,
+                    "description": description,
+                    "command": command,
+                    "attempts": step_attempts,
+                    "final_error": result
+                })
         
         results.append(f"Step {step_num}: {result}")
         messages.append(AIMessage(content=result))
     
     # Add completion message with success/failure summary
     success_count = len([r for r in results if "✅" in r])
-    failure_count = len([r for r in results if "❌" in r])
+    failure_count = len(failed_steps)
     
     if failure_count == 0:
-        completion_message = "Summary:\n"
+        completion_message = "🎉 All steps completed successfully!\n\n"
+        completion_message += "Summary:\n"
         for result in results:
             completion_message += f"  {result}\n"
     else:
@@ -497,8 +805,23 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         for result in results:
             completion_message += f"  {result}\n"
         
+        # Provide detailed failure analysis and suggestions
+        completion_message += f"\n🔍 Failed Steps Analysis:\n"
+        for failed_step in failed_steps:
+            completion_message += f"  Step {failed_step['step']}: {failed_step['description']}\n"
+            completion_message += f"    Attempts: {failed_step['attempts']}\n"
+            completion_message += f"    Final Error: {failed_step['final_error']}\n"
+        
+        # Ask LLM for overall recovery suggestions
+        recovery_suggestions = _get_llm_recovery_suggestions(
+            failed_steps, task_breakdown, state.get("debug", False)
+        )
+        
+        if recovery_suggestions:
+            completion_message += f"\n🧠 LLM Recovery Suggestions:\n{recovery_suggestions}\n"
+        
         # Provide helpful suggestions for failed steps
-        completion_message += "\n💡 Suggestions:\n"
+        completion_message += "\n💡 Manual Recovery Suggestions:\n"
         if any("docker" in r.lower() for r in results if "❌" in r):
             completion_message += "• For Docker errors, check if the container name exists: `docker ps -a`\n"
             completion_message += "• Verify container is running: `docker ps`\n"

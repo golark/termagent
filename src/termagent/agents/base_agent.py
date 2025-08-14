@@ -34,6 +34,13 @@ class BaseAgent:
                 self.llm = ChatOpenAI(model=llm_model, temperature=0)
                 # Store the model name for comparison
                 self.llm.model_name = llm_model
+                
+                # Add debug message when GPT-4o is used
+                if llm_model == "gpt-4o":
+                    self._debug_print(f"🧠 Initialized GPT-4o for enhanced reasoning capabilities")
+                else:
+                    self._debug_print(f"⚡ Initialized {llm_model} for efficient processing")
+                
                 return True
             except Exception as e:
                 self._debug_print(f"⚠️ LLM initialization failed: {e}")

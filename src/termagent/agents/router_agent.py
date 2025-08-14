@@ -19,6 +19,20 @@ class QueryDetector:
         'can', 'could', 'would', 'should', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were'
     }
     
+    # Complex query indicators that suggest GPT-4o usage
+    COMPLEX_QUERY_INDICATORS = {
+        'how to', 'what is the best way', 'why does', 'when should',
+        'which approach', 'compare', 'difference between', 'similarities',
+        'pros and cons', 'advantages', 'disadvantages', 'trade-offs',
+        'best practices', 'recommendations', 'suggestions', 'alternatives',
+        'considerations', 'implications', 'consequences', 'impact',
+        'evaluation', 'assessment', 'review', 'analysis of',
+        'what would happen if', 'suppose that', 'imagine if',
+        'under what circumstances', 'in what situations',
+        'how would you', 'what would you recommend',
+        'explain why', 'describe how', 'analyze the'
+    }
+    
     # Question patterns
     QUESTION_PATTERNS = [
         r'\?$',  # Ends with question mark
@@ -26,6 +40,20 @@ class QueryDetector:
         r'\s+(what|how|why|when|where|which|who|whose|whom)\s+',  # Contains question word
         r'^(can|could|would|should|will|do|does|did|is|are|was|were)\s+',  # Starts with modal/auxiliary
         r'\s+(can|could|would|should|will|do|does|did|is|are|was|were)\s+',  # Contains modal/auxiliary
+    ]
+    
+    # Complex query patterns
+    COMPLEX_QUERY_PATTERNS = [
+        r'\b(how to|what is the best way|why does|when should)\b',
+        r'\b(which approach|compare|difference between|similarities)\b',
+        r'\b(pros and cons|advantages|disadvantages|trade.?offs)\b',
+        r'\b(best practices|recommendations|suggestions|alternatives)\b',
+        r'\b(considerations|implications|consequences|impact)\b',
+        r'\b(evaluation|assessment|review|analysis of)\b',
+        r'\b(what would happen if|suppose that|imagine if)\b',
+        r'\b(under what circumstances|in what situations)\b',
+        r'\b(how would you|what would you recommend)\b',
+        r'\b(explain why|describe how|analyze the)\b'
     ]
     
     def __init__(self, debug: bool = False):
@@ -65,6 +93,32 @@ class QueryDetector:
             if f' {word} ' in f' {text_lower} ':
                 self._debug_print(f"Detected question word: {word}")
                 return True
+        
+        return False
+    
+    def is_complex_query(self, text: str) -> bool:
+        """Detect if the query is complex and would benefit from GPT-4o analysis."""
+        if not text or not text.strip():
+            return False
+        
+        text_lower = text.lower().strip()
+        
+        # Check for complex query indicators
+        for indicator in self.COMPLEX_QUERY_INDICATORS:
+            if indicator in text_lower:
+                self._debug_print(f"Detected complex query indicator: {indicator}")
+                return True
+        
+        # Check for complex query patterns
+        for pattern in self.COMPLEX_QUERY_PATTERNS:
+            if re.search(pattern, text_lower):
+                self._debug_print(f"Detected complex query pattern: {pattern}")
+                return True
+        
+        # Check for long, descriptive queries (more than 10 words often indicates complexity)
+        if len(text.split()) > 10:
+            self._debug_print(f"Detected long query ({len(text.split())} words), likely complex")
+            return True
         
         return False
     
@@ -131,8 +185,16 @@ class RouterAgent(BaseAgent):
         # First, check if this is a question/informational query
         if self.query_detector.is_question(task):
             query_type = self.query_detector.get_query_type(task)
-            self._debug_print(f"Routing to query handler (type: {query_type})")
-            return self._create_query_state(state, task, query_type)
+            
+            # Check if this is a complex query that would benefit from GPT-4o
+            is_complex = self.query_detector.is_complex_query(task)
+            
+            if is_complex:
+                self._debug_print(f"Routing to query handler - complex query detected (type: {query_type})")
+            else:
+                self._debug_print(f"Routing to query handler - simple query (type: {query_type})")
+            
+            return self._create_query_state(state, task, query_type, is_complex)
         
         # Check if this is a known shell command that should be executed directly
         if self.shell_detector.should_execute_directly(task):
@@ -161,8 +223,14 @@ class RouterAgent(BaseAgent):
         
         # Reinitialize LLM with the recommended model if different from current
         if not self.llm or getattr(self.llm, 'model_name', '') != recommended_model:
-            self._debug_print(f"Reinitializing LLM with {recommended_model}")
+            self._debug_print(f"🔄 Switching LLM model to {recommended_model}")
             self._initialize_llm(recommended_model)
+        
+        # Show which model is being used for this task
+        if recommended_model == "gpt-4o":
+            self._debug_print(f"🧠 Using GPT-4o for complex reasoning task")
+        else:
+            self._debug_print(f"⚡ Using GPT-3.5-turbo for simple task")
         
         # Get directory context for the LLM
         try:
@@ -351,17 +419,42 @@ Breakdown: [
             "last_command": task
         }
 
-    def _create_query_state(self, state: Dict[str, Any], query: str, query_type: str) -> Dict[str, Any]:
+    def _create_query_state(self, state: Dict[str, Any], query: str, query_type: str, is_complex: bool) -> Dict[str, Any]:
         """Create state for handling informational queries."""
         messages = state.get("messages", [])
         
-        # Create message indicating query handling
+        # Analyze query complexity to determine if GPT-4o should be used
+        complexity_analysis = self.complexity_analyzer.analyze_complexity(query)
+        
+        # Use both the query detector's complexity assessment and the complexity analyzer
+        # If either indicates complexity, use GPT-4o
+        should_use_gpt4o = is_complex or complexity_analysis['requires_complex_reasoning']
+        recommended_model = complexity_analysis['recommended_model']
+        
+        # Override recommended model if complex query is detected
+        if should_use_gpt4o:
+            recommended_model = "gpt-4o"
+        
+        # Create message indicating query handling with model information
         query_text = f"🔍 Query detected: {query}\n"
-        query_text += f"Type: {query_type}\n"
-        query_text += "Routing to appropriate agent for information gathering..."
+        query_text += f"📋 Type: {query_type}\n"
+        query_text += f"🧠 Complexity: {complexity_analysis['complexity_score']} score\n"
+        
+        if should_use_gpt4o:
+            query_text += f"🧠 Using GPT-4o for complex reasoning\n"
+            query_text += "This query requires advanced analysis and step-by-step guidance..."
+        else:
+            query_text += f"⚡ Using GPT-3.5-turbo for simple analysis\n"
+            query_text += "This query will be handled efficiently..."
+        
+        query_text += "\nRouting to appropriate agent for information gathering..."
         messages.append(AIMessage(content=query_text))
         
         self._debug_print(f"Created query state for: {query} (type: {query_type})")
+        if should_use_gpt4o:
+            self._debug_print(f"🧠 Query requires GPT-4o for complex reasoning")
+        else:
+            self._debug_print(f"⚡ Query can use GPT-3.5-turbo for simple analysis")
         
         # Route to appropriate agent based on query type
         if query_type == 'shell_query':
@@ -369,14 +462,17 @@ Breakdown: [
         else:
             routed_to = "handle_query"
         
-        # Add to state
+        # Add to state with complexity information
         return {
             **state,
             "messages": messages,
             "routed_to": routed_to,
             "last_command": query,
             "is_query": True,
-            "query_type": query_type
+            "query_type": query_type,
+            "query_complexity": complexity_analysis,
+            "should_use_gpt4o": should_use_gpt4o,
+            "is_complex_query": is_complex
         }
     
 

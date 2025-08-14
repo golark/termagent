@@ -26,7 +26,14 @@ class TaskComplexityAnalyzer:
             'backup', 'restore', 'recovery', 'monitoring', 'logging',
             'error handling', 'exception', 'edge case', 'corner case',
             'data analysis', 'statistics', 'metrics', 'reporting',
-            'automation', 'scripting', 'workflow', 'pipeline'
+            'automation', 'scripting', 'workflow', 'pipeline',
+            # Query-specific complex keywords
+            'how to', 'what is the best way', 'why does', 'when should',
+            'which approach', 'compare', 'difference between', 'similarities',
+            'pros and cons', 'advantages', 'disadvantages', 'trade-offs',
+            'best practices', 'recommendations', 'suggestions', 'alternatives',
+            'considerations', 'implications', 'consequences', 'impact',
+            'evaluation', 'assessment', 'review', 'analysis of'
         }
         
         # Keywords that indicate simple tasks
@@ -60,7 +67,18 @@ class TaskComplexityAnalyzer:
             r'\b(testing|validation|verification|quality)\b',
             r'\b(integration|deployment|configuration|setup)\b',
             r'\b(automation|scripting|workflow|pipeline)\b',
-            r'\b(monitoring|logging|alerting|tracking)\b'
+            r'\b(monitoring|logging|alerting|tracking)\b',
+            # Query-specific complex patterns
+            r'\b(how to|what is the best way|why does|when should)\b',
+            r'\b(which approach|compare|difference between|similarities)\b',
+            r'\b(pros and cons|advantages|disadvantages|trade.?offs)\b',
+            r'\b(best practices|recommendations|suggestions|alternatives)\b',
+            r'\b(considerations|implications|consequences|impact)\b',
+            r'\b(evaluation|assessment|review|analysis of)\b',
+            r'\b(what would happen if|suppose that|imagine if)\b',
+            r'\b(under what circumstances|in what situations)\b',
+            r'\b(how would you|what would you recommend)\b',
+            r'\b(explain why|describe how|analyze the)\b'
         ]
         
         # Patterns that indicate simple tasks
