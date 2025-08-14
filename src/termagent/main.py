@@ -25,24 +25,6 @@ def main():
         print("🐛 DEBUG MODE ENABLED")
     if args.no_confirm:
         print("⏭️  NO-CONFIRM MODE ENABLED")
-    print("=" * 40)
-    print("This agent can:")
-    print("  • Execute basic shell commands directly (ls, pwd, mkdir, rm, cp)")
-    print("  • Handle git operations through shell commands")
-    print("  • Handle file operations through shell commands")
-    print("  • Handle Docker operations through shell commands")
-    print("  • Detect and route Kubernetes commands to a specialized k8s agent")
-    print("  • Handle package management commands (brew, apt, pip, npm, etc.)")
-    print("  • Edit files with vim or nano")
-    print("  • Handle regular commands")
-    print("  • Use MCP for agent communication")
-    print("  • Show detailed debug information")
-    print("  • Execute zsh-compatible shell commands")
-    print("  • Navigate command history with ↑/↓ arrow keys")
-    print("  • Search and manage command history")
-    print("  • Process commands from files using --file flag")
-    print("  • Accept voice commands using Google Speech Recognition")
-    print()
     
     # Create the agent graph
     print("Initializing agent system...")
@@ -173,7 +155,7 @@ def main():
     print("  history     - Show command history")
     print("  search <q>  - Search command history")
     print("  clear       - Clear command history")
-    print("  voice       - Show voice input status")
+    print("  voice       - Enable voice input mode")
     print("  Note: Voice commands are automatically processed through the router")
     print("-" * 30)
     
@@ -191,13 +173,6 @@ def main():
     
     # Create input handler with command history and command processor
     input_handler = create_input_handler(debug=args.debug, command_processor=process_voice_command)
-    
-    # Show voice input status if available
-    if input_handler.is_voice_available():
-        print(f"🎤 Voice input: {input_handler.get_voice_status()}")
-        print("   Press 'v' during input to activate voice mode")
-        print("   Voice commands are automatically routed through the agent system")
-        print("-" * 30)
     
     # Track working directory across commands
     current_working_directory = os.getcwd()
@@ -224,7 +199,11 @@ def main():
                 input_handler.get_history_stats()
                 continue
             elif command.lower() == 'voice':
-                input_handler.show_voice_status()
+                if input_handler.is_voice_available():
+                    print("🎤 Activating voice input mode...")
+                    input_handler._toggle_voice_input()
+                else:
+                    print("❌ Voice input not available")
                 continue
 
             
