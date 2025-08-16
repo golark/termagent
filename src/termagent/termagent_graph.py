@@ -7,50 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from termagent.agents.router_agent import RouterAgent
 
 
-def scan_available_executables() -> Dict[str, str]:
-    """Scan the PATH for available executables and return a mapping of command names to full paths."""
-    executables = {}
-    
-    # Get PATH from environment
-    path_dirs = os.environ.get('PATH', '').split(os.pathsep)
-    
-    for path_dir in path_dirs:
-        if not os.path.isdir(path_dir):
-            continue
-            
-        try:
-            for filename in os.listdir(path_dir):
-                file_path = os.path.join(path_dir, filename)
-                
-                # Check if it's an executable file
-                if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
-                    # Store the full path with filename as key
-                    if filename not in executables:
-                        executables[filename] = file_path
-                        
-        except (OSError, PermissionError):
-            # Skip directories we can't access
-            continue
-    
-    return executables
 
-
-def resolve_executable_path(command: str, available_executables: Dict[str, str]) -> str:
-    """Resolve a command to its full executable path if it starts with an available executable."""
-    if not command or ' ' not in command:
-        return command
-    
-    # Get the first word (the command name)
-    parts = command.split()
-    command_name = parts[0]
-    
-    # Check if this command name exists in our available executables
-    if command_name in available_executables:
-        # Replace the command name with the full path
-        parts[0] = available_executables[command_name]
-        return ' '.join(parts)
-    
-    return command
 
 
 class AgentState(TypedDict):
@@ -189,7 +146,7 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
     if should_use_gpt4o and not is_simple_status_query:
         # Use GPT-4o for complex shell queries (but not simple status queries)
         if state.get("debug", False):
-            print("fileagent: 🧠 Using GPT-4o for complex shell query analysis")
+            print("🧠 Using GPT-4o for complex shell query analysis")
         
         # Get directory context for better analysis
         try:
@@ -295,7 +252,7 @@ Expected Output: [What you should see]
                 
         except Exception as e:
             if state.get("debug", False):
-                print(f"fileagent: ⚠️ GPT-4o analysis failed: {e}, falling back to standard approach")
+                print(f"⚠️ GPT-4o analysis failed: {e}, falling back to standard approach")
     
     # Standard approach for simple queries or when GPT-4o is not available
     # Use LLM to determine the appropriate command for the query
@@ -327,22 +284,17 @@ Expected Output: [What you should see]
         import subprocess
         import shlex
         
-        # Scan for available executables and resolve command path
-        available_executables = scan_available_executables()
-        resolved_command = resolve_executable_path(command, available_executables)
-        
         if state.get("debug", False):
-            print(f"fileagent: 🔍 Original command: {command}")
-            print(f"fileagent: 🔍 Resolved command: {resolved_command}")
+            print(f"🔍 Executing command: {command}")
         
         # Check if command contains shell operators that require shell=True
         shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-        needs_shell = any(op in resolved_command for op in shell_operators)
+        needs_shell = any(op in command for op in shell_operators)
         
         if needs_shell:
             # Use shell=True for commands with operators
             process_result = subprocess.run(
-                resolved_command,
+                command,
                 shell=True,
                 executable="/bin/zsh",
                 capture_output=True,
@@ -351,7 +303,7 @@ Expected Output: [What you should see]
             )
         else:
             # Use shlex.split for simple commands without operators
-            args = shlex.split(resolved_command)
+            args = shlex.split(command)
             process_result = subprocess.run(
                 args, 
                 capture_output=True, 
@@ -820,22 +772,17 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 import subprocess
                 import shlex
                 
-                # Scan for available executables and resolve command path
-                available_executables = scan_available_executables()
-                resolved_command = resolve_executable_path(command, available_executables)
-                
                 if state.get("debug", False):
-                    print(f"fileagent: 🔍 Step {step_num} - Original command: {command}")
-                    print(f"fileagent: 🔍 Step {step_num} - Resolved command: {resolved_command}")
+                    print(f"🔍 Step {step_num} - Executing command: {command}")
                 
                 # Check if command contains shell operators that require shell=True
                 shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-                needs_shell = any(op in resolved_command for op in shell_operators)
+                needs_shell = any(op in command for op in shell_operators)
                 
                 if needs_shell:
                     # Use shell=True for commands with operators
                     process_result = subprocess.run(
-                        resolved_command,
+                        command,
                         shell=True,
                         executable="/bin/zsh",
                         capture_output=True,
@@ -844,7 +791,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                     )
                 else:
                     # Use shlex.split for simple commands without operators
-                    args = shlex.split(resolved_command)
+                    args = shlex.split(command)
                     process_result = subprocess.run(
                         args, 
                         capture_output=True, 

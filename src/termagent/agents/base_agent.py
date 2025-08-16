@@ -139,20 +139,12 @@ class BaseAgent:
     
     def _execute_shell_command(self, command: str, cwd: str = ".") -> str:
         try:
-            # Import the functions from shell_commands to avoid duplication
-            from termagent.shell_commands import scan_available_executables, resolve_executable_path
-            
-            # Scan for available executables and resolve command path
-            available_executables = scan_available_executables()
-            resolved_command = resolve_executable_path(command, available_executables)
-            
             if self.debug:
-                print(f"fileagent: 🔍 Original command: {command}")
-                print(f"fileagent: 🔍 Resolved command: {resolved_command}")
+                self._debug_print(f"🔍 Executing command: {command}")
             
             # Execute the command using zsh explicitly
             result = subprocess.run(
-                resolved_command,
+                command,
                 shell=True,
                 executable="/bin/zsh",
                 capture_output=True,

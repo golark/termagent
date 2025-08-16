@@ -11,50 +11,7 @@ import re
 from typing import Tuple, Optional, List, Dict
 
 
-def scan_available_executables() -> Dict[str, str]:
-    """Scan the PATH for available executables and return a mapping of command names to full paths."""
-    executables = {}
-    
-    # Get PATH from environment
-    path_dirs = os.environ.get('PATH', '').split(os.pathsep)
-    
-    for path_dir in path_dirs:
-        if not os.path.isdir(path_dir):
-            continue
-            
-        try:
-            for filename in os.listdir(path_dir):
-                file_path = os.path.join(path_dir, filename)
-                
-                # Check if it's an executable file
-                if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
-                    # Store the full path with filename as key
-                    if filename not in executables:
-                        executables[filename] = file_path
-                        
-        except (OSError, PermissionError):
-            # Skip directories we can't access
-            continue
-    
-    return executables
 
-
-def resolve_executable_path(command: str, available_executables: Dict[str, str]) -> str:
-    """Resolve a command to its full executable path if it starts with an available executable."""
-    if not command or ' ' not in command:
-        return command
-    
-    # Get the first word (the command name)
-    parts = command.split()
-    command_name = parts[0]
-    
-    # Check if this command name exists in our available executables
-    if command_name in available_executables:
-        # Replace the command name with the full path
-        parts[0] = available_executables[command_name]
-        return ' '.join(parts)
-    
-    return command
 
 
 class ShellCommandDetector:
@@ -202,7 +159,7 @@ class ShellCommandDetector:
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
         if self.debug:
-            print(f"shell_comm   | {message}")
+            print(f"🔍 {message}")
     
     def is_known_command(self, command: str) -> bool:
         """Check if the command is a known shell command."""
@@ -311,18 +268,13 @@ class ShellCommandDetector:
                     command_type = "system command"
                     action = "monitoring"
                 
-                # Scan for available executables and resolve command path
-                available_executables = scan_available_executables()
-                resolved_command = resolve_executable_path(command, available_executables)
-                
                 if self.debug:
-                    print(f"fileagent: 🔍 Interactive command - Original: {command}")
-                    print(f"fileagent: 🔍 Interactive command - Resolved: {resolved_command}")
+                    self._debug_print(f"🔍 Interactive command: {command}")
                 
-                self._debug_print(f"Starting interactive {command_type}: {resolved_command}")
+                self._debug_print(f"Starting interactive {command_type}: {command}")
                 # Note: This will block until the command is closed
                 process_result = subprocess.run(
-                    resolved_command,
+                    command,
                     shell=True,
                     executable="/bin/zsh",
                     cwd=cwd
@@ -330,22 +282,17 @@ class ShellCommandDetector:
                 return True, f"✅ Interactive {command_type} {base_command} finished {action} (exit code: {process_result.returncode})", process_result.returncode, cwd
             else:
                 # Regular command execution with output capture
-                # Scan for available executables and resolve command path
-                available_executables = scan_available_executables()
-                resolved_command = resolve_executable_path(command, available_executables)
-                
                 if self.debug:
-                    print(f"fileagent: 🔍 Original command: {command}")
-                    print(f"fileagent: 🔍 Resolved command: {resolved_command}")
+                    self._debug_print(f"🔍 Executing command: {command}")
                 
                 # Check if command contains shell operators that require shell=True
                 shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-                needs_shell = any(op in resolved_command for op in shell_operators)
+                needs_shell = any(op in command for op in shell_operators)
                 
                 if needs_shell:
                     # Use shell=True for commands with operators
                     process_result = subprocess.run(
-                        resolved_command,
+                        command,
                         shell=True,
                         executable="/bin/zsh",
                         capture_output=True,
@@ -355,7 +302,7 @@ class ShellCommandDetector:
                     )
                 else:
                     # Use shlex.split for simple commands without operators
-                    args = shlex.split(resolved_command)
+                    args = shlex.split(command)
                     process_result = subprocess.run(
                         args,
                         capture_output=True,
