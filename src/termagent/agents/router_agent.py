@@ -126,11 +126,36 @@ class QueryDetector:
         """Determine the type of query to help with routing."""
         text_lower = text.lower()
         
+        # Check if this is a simple status query that should be handled directly
+        simple_status_indicators = [
+            'is', 'are', 'running', 'stopped', 'active', 'available', 'installed',
+            'status', 'running', 'up', 'down', 'healthy', 'ready', 'connected'
+        ]
+        
+        # Simple status queries like "is docker running?" should go to shell handler
+        if any(indicator in text_lower for indicator in simple_status_indicators):
+            # Check if it's a simple yes/no status question
+            if len(text.split()) <= 5 and any(word in text_lower for word in ['is', 'are']):
+                return 'shell_query'
+        
+        # Check if this is an analysis query that doesn't need shell commands
+        analysis_indicators = [
+            'how would you recommend', 'what are the pros and cons', 'analyze', 'compare',
+            'what would happen if', 'explain why', 'describe how', 'recommend',
+            'suggest', 'best practices', 'alternatives', 'considerations',
+            'evaluate', 'assess', 'review', 'optimize', 'performance',
+            'security', 'scalability', 'architecture', 'refactor'
+        ]
+        
+        # If it's an analysis query, route to general query handler for multi-step guidance
+        if any(indicator in text_lower for indicator in analysis_indicators):
+            return 'general_query'
+        
         # File, system, and git queries - route to shell handler
         if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status', 'git', 'commit', 'branch', 'remote', 'repository', 'permissions', 'attributes', 'owner', 'group']):
             return 'shell_query'
         
-        return 'shell_query'
+        return 'general_query'
 
 
 class RouterAgent(BaseAgent):

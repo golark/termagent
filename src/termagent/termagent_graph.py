@@ -122,12 +122,24 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
     """Handle file and Docker queries by converting them to appropriate shell commands."""
     messages = state.get("messages", [])
     
+    # Check if this is a simple status query that should be handled directly
+    simple_status_indicators = [
+        'is', 'are', 'running', 'stopped', 'active', 'available', 'installed',
+        'status', 'running', 'up', 'down', 'healthy', 'ready', 'connected'
+    ]
+    
+    is_simple_status_query = (
+        any(indicator in query.lower() for indicator in simple_status_indicators) and
+        len(query.split()) <= 5 and
+        any(word in query.lower() for word in ['is', 'are'])
+    )
+    
     # Check if this query should use GPT-4o for complex analysis
-    should_use_gpt4o = state.get("should_use_gpt4o", False)
+    should_use_gpt4o = state.get("should_use_gpt4o", False) and not is_simple_status_query
     query_complexity = state.get("query_complexity", {})
     
-    if should_use_gpt4o:
-        # Use GPT-4o for complex shell queries
+    if should_use_gpt4o and not is_simple_status_query:
+        # Use GPT-4o for complex shell queries (but not simple status queries)
         if state.get("debug", False):
             print("fileagent: 🧠 Using GPT-4o for complex shell query analysis")
         
@@ -156,54 +168,75 @@ def _handle_shell_query(state: AgentState, query: str) -> AgentState:
             
             if base_agent._initialize_llm("gpt-4o"):
                 # Create system prompt for shell query analysis
-                system_prompt = f"""You are an expert shell command analyst using GPT-4o. Given a user query about files, directories, Docker, or system information, provide comprehensive analysis and step-by-step guidance.
+                system_prompt = f"""You are an expert shell command analyst using GPT-4o. Given a user query about files, directories, Docker, or system information, provide comprehensive analysis and multi-step guidance.
 
 {context_info}
 
 Your task is to:
 1. Understand what the user is asking about
 2. Analyze the current workspace context
-3. Provide the most appropriate shell command(s) to answer their query
-4. Explain why this command is the best choice
-5. Provide alternative approaches if relevant
+3. Break down the solution into 3-7 logical, actionable steps
+4. Provide the most appropriate shell command(s) for each step
+5. Explain why each command is the best choice
 6. Consider edge cases and potential issues
 7. Suggest follow-up commands if helpful
 
-IMPORTANT GUIDELINES:
-- Be specific and actionable
+IMPORTANT REQUIREMENTS:
+- Break down the solution into MULTIPLE actionable steps (3-7 steps)
+- Each step must be specific and actionable
+- Provide clear guidance on what to do at each step
+- Suggest specific commands or tools when relevant
 - Consider the current directory and file structure
-- Suggest the most efficient and reliable commands
 - Explain the reasoning behind your recommendations
 - Consider multiple ways to answer the query
 - Be helpful and informative
 - Focus on practical, executable solutions
 
-For each recommendation, provide:
-- The specific shell command to use
-- Why this command is appropriate
-- What the expected output will be
-- Any potential issues or considerations
-- Alternative approaches if relevant
+STEP STRUCTURE:
+For each step, provide:
+1. Step number and title
+2. Clear description of what to do
+3. The specific shell command to use
+4. Why this command is appropriate
+5. What the expected output will be
+6. Any potential issues or considerations
+7. Alternative approaches if relevant
 
-Return your response in a clear, structured format that helps the user understand how to answer their query effectively."""
+Return your response in a clear, structured format with numbered steps that the user can follow sequentially.
+
+Example format:
+Step 1: [Title]
+Description: [What to do]
+Command: [Specific shell command]
+Reasoning: [Why this command is best]
+Expected Output: [What you should see]
+
+Step 2: [Title]
+Description: [What to do]
+Command: [Specific shell command]
+Reasoning: [Why this command is best]
+Expected Output: [What you should see]
+
+[Continue for all steps...]"""
 
                 # Create messages for LLM
                 llm_messages = [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Analyze this shell-related query and provide guidance: {query}"}
+                    {"role": "user", "content": f"Analyze this shell-related query and provide multi-step guidance: {query}"}
                 ]
                 
                 # Get response from GPT-4o
                 llm_response = base_agent.llm.invoke(llm_messages)
                 analysis_content = llm_response.content.strip()
                 
-                # Create comprehensive response
-                analysis_response = f"🧠 GPT-4o Shell Query Analysis Complete!\n\n"
+                # Create comprehensive response with multi-step guidance
+                analysis_response = f"🧠 GPT-4o Multi-Step Shell Query Analysis Complete!\n\n"
                 analysis_response += f"🔍 Query: {query}\n"
                 analysis_response += f"📋 Type: Shell Query\n"
                 analysis_response += f"🧠 Complexity: {query_complexity.get('complexity_score', 'Unknown')} score\n\n"
-                analysis_response += f"📋 Analysis:\n{analysis_content}\n\n"
-                analysis_response += "💡 You can now follow these recommendations, or ask me to execute specific commands for you."
+                analysis_response += f"📋 Multi-Step Solution:\n{analysis_content}\n\n"
+                analysis_response += "💡 Follow these steps sequentially to answer your query effectively. "
+                analysis_response += "Each step builds on the previous one to provide a comprehensive solution."
                 
                 messages.append(AIMessage(content=analysis_response))
                 
@@ -298,6 +331,42 @@ Return your response in a clear, structured format that helps the user understan
 def _analyze_query_with_llm(query: str) -> tuple[str, str, str]:
     """Use LLM to analyze a query and determine the appropriate command, description, and response type."""
     
+    # Check if this is a simple status query
+    simple_status_indicators = [
+        'is', 'are', 'running', 'stopped', 'active', 'available', 'installed',
+        'status', 'running', 'up', 'down', 'healthy', 'ready', 'connected'
+    ]
+    
+    query_lower = query.lower()
+    is_simple_status_query = (
+        any(indicator in query_lower for indicator in simple_status_indicators) and
+        len(query.split()) <= 5 and
+        any(word in query_lower for word in ['is', 'are'])
+    )
+    
+    # Handle simple status queries directly
+    if is_simple_status_query:
+        if 'docker' in query_lower:
+            if 'running' in query_lower:
+                return "docker ps", "Checking if Docker containers are running", "status"
+            else:
+                return "docker --version", "Checking Docker installation status", "status"
+        elif 'git' in query_lower:
+            return "git status", "Checking git repository status", "status"
+        elif 'python' in query_lower:
+            return "python3 --version", "Checking Python installation status", "status"
+        elif 'node' in query_lower:
+            return "node --version", "Checking Node.js installation status", "status"
+        elif 'npm' in query_lower:
+            return "npm --version", "Checking npm installation status", "status"
+        elif 'brew' in query_lower:
+            return "brew --version", "Checking Homebrew installation status", "status"
+        elif 'apt' in query_lower:
+            return "apt --version", "Checking APT package manager status", "status"
+        else:
+            # Generic status check
+            return "echo 'Status check completed'", "Generic status check", "status"
+    
     # Check if this is an analysis query that doesn't need a shell command
     analysis_indicators = [
         'how would you recommend', 'what are the pros and cons', 'analyze', 'compare',
@@ -305,7 +374,6 @@ def _analyze_query_with_llm(query: str) -> tuple[str, str, str]:
         'suggest', 'best practices', 'alternatives', 'considerations'
     ]
     
-    query_lower = query.lower()
     is_analysis_query = any(indicator in query_lower for indicator in analysis_indicators)
     
     if is_analysis_query:
@@ -670,11 +738,12 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         step_num = step_info["step"]
         description = step_info["description"]
         agent = step_info["agent"]
-        command = step_info["description"]
+        command = step_info["command"]  # Use the command field, not description
         
         # Create step execution message
         step_message = f"🚀 Executing Step {step_num}: {description}\n"
         step_message += f"   Agent: {agent}\n"
+        step_message += f"   Command: {command}\n"
         step_message += f"   Progress: {i + 1}/{total_steps}"
         
         messages.append(AIMessage(content=step_message))
@@ -771,7 +840,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                     )
                     if error_alternative and error_alternative != command:
                         command = error_alternative
-                        step_info["command"] = alternative_command
+                        step_info["command"] = error_alternative
                         task_breakdown[i] = step_info
                         
                         alt_message = f"🔄 LLM suggested error alternative for Step {step_num}:\n"
@@ -893,7 +962,271 @@ def process_command_with_cwd(command: str, graph, current_working_directory: str
     return result
 
 
+def _get_llm_alternative_for_failed_step(step_num: int, description: str, command: str, error_output: str, debug: bool = False) -> str:
+    """Ask LLM for an alternative approach when a step fails."""
+    try:
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("failure_recovery", debug=debug)
+        
+        if base_agent._initialize_llm("gpt-4o"):
+            if debug:
+                print("failure_recovery | 🧠 Using GPT-4o for step failure recovery")
+            
+            system_prompt = """You are an expert at troubleshooting failed shell commands and suggesting alternatives. Given a failed step, provide a better approach.
 
+Your task is to:
+1. Analyze why the command failed
+2. Suggest an alternative command or approach
+3. Consider common issues and their solutions
+4. Provide a more robust alternative
+
+IMPORTANT:
+- Return ONLY the alternative command, nothing else
+- Make sure the command is valid and safe
+- Consider the error message when suggesting alternatives
+- If no good alternative exists, return an empty string
+
+Examples:
+Failed: "docker stop nonexistent_container"
+Error: "Error response from daemon: No such container: nonexistent_container"
+Alternative: "docker ps -a | grep container_name"
+
+Failed: "git checkout nonexistent_branch"
+Error: "error: pathspec 'nonexistent_branch' did not match any file(s) known to git"
+Alternative: "git branch -a | grep branch_name"
+
+Failed: "ls /nonexistent/path"
+Error: "No such file or directory"
+Alternative: "find . -name 'filename' -type f" """
+
+            user_message = f"""Step {step_num}: {description}
+Failed Command: {command}
+Error Output: {error_output}
+
+Suggest an alternative command or approach:"""
+
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = base_agent.llm.invoke(llm_messages)
+            alternative = response.content.strip()
+            
+            # Clean up the response
+            if alternative and alternative != command:
+                # Remove any markdown formatting or extra text
+                alternative = alternative.replace('```', '').replace('`', '').strip()
+                if alternative.startswith('Alternative: '):
+                    alternative = alternative[13:].strip()
+                
+                if debug:
+                    print(f"failure_recovery | Suggested alternative: {alternative}")
+                
+                return alternative
+            
+    except Exception as e:
+        if debug:
+            print(f"failure_recovery | Error getting LLM alternative: {e}")
+    
+    return ""
+
+
+def _get_llm_timeout_alternative(step_num: int, description: str, command: str, debug: bool = False) -> str:
+    """Ask LLM for an alternative approach when a step times out."""
+    try:
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("timeout_recovery", debug=debug)
+        
+        if base_agent._initialize_llm("gpt-4o"):
+            if debug:
+                print("timeout_recovery | 🧠 Using GPT-4o for timeout recovery")
+            
+            system_prompt = """You are an expert at handling command timeouts and suggesting faster alternatives. Given a timed-out step, provide a more efficient approach.
+
+Your task is to:
+1. Analyze why the command might be slow
+2. Suggest a faster alternative command
+3. Consider using timeouts, limits, or different approaches
+4. Provide a more efficient solution
+
+IMPORTANT:
+- Return ONLY the alternative command, nothing else
+- Make sure the command is valid and safe
+- Focus on speed and efficiency
+- If no good alternative exists, return an empty string
+
+Examples:
+Timeout: "find / -name '*.log'"
+Alternative: "find . -name '*.log' -maxdepth 3"
+
+Timeout: "docker system prune -a"
+Alternative: "docker system prune -a --force"
+
+Timeout: "git log --oneline --all"
+Alternative: "git log --oneline -n 50" """
+
+            user_message = f"""Step {step_num}: {description}
+Timed Out Command: {command}
+
+Suggest a faster alternative command:"""
+
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = base_agent.llm.invoke(llm_messages)
+            alternative = response.content.strip()
+            
+            # Clean up the response
+            if alternative and alternative != command:
+                alternative = alternative.replace('```', '').replace('`', '').strip()
+                if alternative.startswith('Alternative: '):
+                    alternative = alternative[13:].strip()
+                
+                if debug:
+                    print(f"timeout_recovery | Suggested timeout alternative: {alternative}")
+                
+                return alternative
+            
+    except Exception as e:
+        if debug:
+            print(f"timeout_recovery | Error getting LLM timeout alternative: {e}")
+    
+    return ""
+
+
+def _get_llm_error_alternative(step_num: int, description: str, command: str, error: str, debug: bool = False) -> str:
+    """Ask LLM for an alternative approach when a step encounters an execution error."""
+    try:
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("error_recovery", debug=debug)
+        
+        if base_agent._initialize_llm("gpt-4o"):
+            if debug:
+                print("error_recovery | 🧠 Using GPT-4o for execution error recovery")
+            
+            system_prompt = """You are an expert at handling command execution errors and suggesting alternatives. Given a failed step, provide a better approach.
+
+Your task is to:
+1. Analyze the execution error
+2. Suggest an alternative command or approach
+3. Consider system compatibility and permissions
+4. Provide a more robust solution
+
+IMPORTANT:
+- Return ONLY the alternative command, nothing else
+- Make sure the command is valid and safe
+- Consider the error type when suggesting alternatives
+- If no good alternative exists, return an empty string
+
+Examples:
+Error: "Permission denied"
+Alternative: "sudo command" or "chmod +x file"
+
+Error: "Command not found"
+Alternative: "which command" or "locate command"
+
+Error: "File not found"
+Alternative: "find . -name filename" or "ls -la | grep filename" """
+
+            user_message = f"""Step {step_num}: {description}
+Failed Command: {command}
+Execution Error: {error}
+
+Suggest an alternative command:"""
+
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = base_agent.llm.invoke(llm_messages)
+            alternative = response.content.strip()
+            
+            # Clean up the response
+            if alternative and alternative != command:
+                alternative = alternative.replace('```', '').replace('`', '').strip()
+                if alternative.startswith('Alternative: '):
+                    alternative = alternative[13:].strip()
+                
+                if debug:
+                    print(f"error_recovery | Suggested error alternative: {alternative}")
+                
+                return alternative
+            
+    except Exception as e:
+        if debug:
+            print(f"error_recovery | Error getting LLM error alternative: {e}")
+    
+    return ""
+
+
+def _get_llm_recovery_suggestions(failed_steps: list, task_breakdown: list, debug: bool = False) -> str:
+    """Ask LLM for overall recovery suggestions when multiple steps fail."""
+    try:
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("recovery_advisor", debug=debug)
+        
+        if base_agent._initialize_llm("gpt-4o"):
+            if debug:
+                print("recovery_advisor | 🧠 Using GPT-4o for overall recovery suggestions")
+            
+            system_prompt = """You are an expert at analyzing failed task breakdowns and providing recovery strategies. Given a list of failed steps, suggest overall recovery approaches.
+
+Your task is to:
+1. Analyze the pattern of failures
+2. Identify common root causes
+3. Suggest recovery strategies
+4. Provide alternative approaches to complete the task
+
+IMPORTANT:
+- Be specific and actionable
+- Consider the relationships between failed steps
+- Suggest both immediate fixes and long-term solutions
+- Focus on practical, executable advice
+
+Provide your suggestions in a clear, structured format."""
+
+            # Create a summary of failed steps
+            failed_summary = "\n".join([
+                f"Step {step['step']}: {step['description']} (Error: {step['final_error']})"
+                for step in failed_steps
+            ])
+            
+            # Create a summary of the overall task
+            task_summary = "\n".join([
+                f"Step {step['step']}: {step['description']}"
+                for step in task_breakdown
+            ])
+            
+            user_message = f"""Task Breakdown:
+{task_summary}
+
+Failed Steps:
+{failed_summary}
+
+Provide overall recovery suggestions and alternative approaches:"""
+
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = base_agent.llm.invoke(llm_messages)
+            suggestions = response.content.strip()
+            
+            if debug:
+                print(f"recovery_advisor | Generated recovery suggestions")
+            
+            return suggestions
+            
+    except Exception as e:
+        if debug:
+            print(f"recovery_advisor | Error getting LLM recovery suggestions: {e}")
+    
+    return ""
 
 
 if __name__ == "__main__":
