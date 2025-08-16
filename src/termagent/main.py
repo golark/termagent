@@ -26,17 +26,6 @@ def main():
     if args.no_confirm:
         print("⏭️  NO-CONFIRM MODE ENABLED")
     
-    # Initialize executable cache during startup
-    print("🔍 Initializing executable cache...")
-    try:
-        from .executable_cache import get_executable_cache
-        cache = get_executable_cache(debug=args.debug)
-        executables = cache.scan_and_cache_executables()
-        print(f"✅ Executable cache ready: {len(executables)} executables found")
-    except Exception as e:
-        print(f"⚠️  Executable cache initialization failed: {e}")
-        print("   Continuing without cache optimization...")
-    
     # Create the agent graph
     print("Initializing agent system...")
     graph = create_agent_graph(debug=args.debug, no_confirm=args.no_confirm)

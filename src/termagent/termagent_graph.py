@@ -5,7 +5,52 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from termagent.agents.router_agent import RouterAgent
-from termagent.executable_cache import scan_available_executables, resolve_executable_path
+
+
+def scan_available_executables() -> Dict[str, str]:
+    """Scan the PATH for available executables and return a mapping of command names to full paths."""
+    executables = {}
+    
+    # Get PATH from environment
+    path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+    
+    for path_dir in path_dirs:
+        if not os.path.isdir(path_dir):
+            continue
+            
+        try:
+            for filename in os.listdir(path_dir):
+                file_path = os.path.join(path_dir, filename)
+                
+                # Check if it's an executable file
+                if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
+                    # Store the full path with filename as key
+                    if filename not in executables:
+                        executables[filename] = file_path
+                        
+        except (OSError, PermissionError):
+            # Skip directories we can't access
+            continue
+    
+    return executables
+
+
+def resolve_executable_path(command: str, available_executables: Dict[str, str]) -> str:
+    """Resolve a command to its full executable path if it starts with an available executable."""
+    if not command or ' ' not in command:
+        return command
+    
+    # Get the first word (the command name)
+    parts = command.split()
+    command_name = parts[0]
+    
+    # Check if this command name exists in our available executables
+    if command_name in available_executables:
+        # Replace the command name with the full path
+        parts[0] = available_executables[command_name]
+        return ' '.join(parts)
+    
+    return command
 
 
 class AgentState(TypedDict):
