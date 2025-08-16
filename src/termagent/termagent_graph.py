@@ -279,6 +279,29 @@ Expected Output: [What you should see]
     response += f"📋 Converting to: {command}\n"
     response += f"💡 Description: {description}\n\n"
     
+    # Check if confirmation is needed for query execution
+    if not state.get("no_confirm", False):
+        print(f"Execute query command: {command}")
+        print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
+        
+        try:
+            response = input().strip().lower()
+            if response in ['n', 'no', 'cancel', 'skip']:
+                response += f"\n❌ Query command cancelled: {command}"
+                messages.append(AIMessage(content=response))
+                return {
+                    **state,
+                    "messages": messages
+                }
+        except KeyboardInterrupt:
+            print("\n❌ Query command cancelled")
+            response += f"\n❌ Query command cancelled: {command}"
+            messages.append(AIMessage(content=response))
+            return {
+                **state,
+                "messages": messages
+            }
+    
     # Execute the command
     try:
         import subprocess
@@ -559,7 +582,28 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     # Create detector instance
     detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
     
-    # Execute the command directly
+    # Check if confirmation is needed
+    if not state.get("no_confirm", False):
+        print(f"Execute shell command: {last_command}")
+        print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
+        
+        try:
+            response = input().strip().lower()
+            if response in ['n', 'no', 'cancel', 'skip']:
+                messages.append(AIMessage(content=f"❌ Shell command cancelled: {last_command}"))
+                return {
+                    **state,
+                    "messages": messages
+                }
+        except KeyboardInterrupt:
+            print("\n❌ Shell command cancelled")
+            messages.append(AIMessage(content=f"❌ Shell command cancelled: {last_command}"))
+            return {
+                **state,
+                "messages": messages
+            }
+    
+    # Execute the command
     current_cwd = state.get("current_working_directory", os.getcwd())
     success, output, return_code, new_cwd = detector.execute_command(last_command, current_cwd)
     
@@ -771,6 +815,25 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
             try:
                 import subprocess
                 import shlex
+                
+
+                
+                # Check if confirmation is needed for task breakdown steps
+                if not state.get("no_confirm", False):
+                    print(f"> {command}")
+                    print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
+                    
+                    try:
+                        response = input().strip().lower()
+                        if response in ['n', 'no', 'cancel', 'skip']:
+                            result = f"❌ Step {step_num} cancelled: {command}"
+                            messages.append(AIMessage(content=result))
+                            continue  # Skip to next step
+                    except KeyboardInterrupt:
+                        print("\n❌ Step cancelled")
+                        result = f"❌ Step {step_num} cancelled: {command}"
+                        messages.append(AIMessage(content=result))
+                        continue  # Skip to next step
                 
                 if state.get("debug", False):
                     print(f"🔍 Step {step_num} - Executing command: {command}")

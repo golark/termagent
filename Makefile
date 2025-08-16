@@ -21,7 +21,7 @@ install:
 
 # Run the application
 run:
-	uv run python -m termagent.main --no-confirm
+	uv run python -m termagent.main
 
 # Run the application in debug mode
 debug:

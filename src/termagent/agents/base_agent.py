@@ -139,6 +139,19 @@ class BaseAgent:
     
     def _execute_shell_command(self, command: str, cwd: str = ".") -> str:
         try:
+            # Check if confirmation is needed
+            if not self.no_confirm:
+                print(f"Execute shell command: {command}")
+                print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
+                
+                try:
+                    response = input().strip().lower()
+                    if response in ['n', 'no', 'cancel', 'skip']:
+                        return "Command cancelled by user"
+                except KeyboardInterrupt:
+                    print("\n❌ Command cancelled")
+                    return "Command cancelled by user"
+            
             if self.debug:
                 self._debug_print(f"🔍 Executing command: {command}")
             

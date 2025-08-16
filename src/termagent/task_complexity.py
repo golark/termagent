@@ -173,16 +173,7 @@ class TaskComplexityAnalyzer:
             'reasoning_indicators': [i for i in reasoning_indicators if i in task_lower]
         }
         
-        if self.debug:
-            self._debug_print(f"Task: '{task}'")
-            self._debug_print(f"Complexity score: {complexity_score}")
-            self._debug_print(f"Reasoning score: {reasoning_score}")
-            self._debug_print(f"Step count estimate: {step_count_estimate}")
-            self._debug_print(f"Requires complex reasoning: {requires_complex_reasoning}")
-            self._debug_print(f"Recommended model: {recommended_model}")
-            self._debug_print(f"Complex keywords: {analysis['complex_keywords_found']}")
-            self._debug_print(f"Simple keywords: {analysis['simple_keywords_found']}")
-            self._debug_print(f"Reasoning indicators: {analysis['reasoning_indicators']}")
+
         
         return analysis
     
