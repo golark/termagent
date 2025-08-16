@@ -151,11 +151,6 @@ def main():
     
     # Interactive mode
     print("Enter commands (or 'quit' to exit):")
-    print("Special commands:")
-    print("  history     - Show command history")
-    print("  search <q>  - Search command history")
-    print("  clear       - Clear command history")
-
     print("-" * 30)
     
     # Create input handler with command history
@@ -172,19 +167,10 @@ def main():
             if not command:
                 continue
             
-            # Handle special commands
+            # Handle quit command
             if command.lower() in ['quit', 'exit', 'q']:
                 print("👋 Goodbye!")
                 break
-            elif command.lower() == 'history':
-                input_handler.show_history()
-                continue
-            elif command.lower() == 'clear':
-                input_handler.clear_history()
-                continue
-            elif command.lower() == 'stats':
-                input_handler.get_history_stats()
-                continue
 
 
             
