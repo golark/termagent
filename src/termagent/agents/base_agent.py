@@ -24,11 +24,6 @@ def scan_available_executables() -> Dict[str, str]:
     # Get PATH from environment
     path_dirs = os.environ.get('PATH', '').split(os.pathsep)
     
-    # Common executable extensions on different platforms
-    extensions = ['']  # No extension for Unix-like systems
-    if os.name == 'nt':  # Windows
-        extensions.extend(['.exe', '.bat', '.cmd', '.com'])
-    
     for path_dir in path_dirs:
         if not os.path.isdir(path_dir):
             continue
@@ -39,16 +34,9 @@ def scan_available_executables() -> Dict[str, str]:
                 
                 # Check if it's an executable file
                 if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
-                    # Remove extension for the key
-                    base_name = filename
-                    for ext in extensions:
-                        if base_name.endswith(ext):
-                            base_name = base_name[:-len(ext)]
-                            break
-                    
-                    # Store the full path
-                    if base_name not in executables:
-                        executables[base_name] = file_path
+                    # Store the full path with filename as key
+                    if filename not in executables:
+                        executables[filename] = file_path
                         
         except (OSError, PermissionError):
             # Skip directories we can't access
