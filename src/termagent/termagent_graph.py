@@ -1,8 +1,68 @@
 from typing import Dict, Any, List, TypedDict
+import os
+import subprocess
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from termagent.agents.router_agent import RouterAgent
+
+
+def scan_available_executables() -> Dict[str, str]:
+    """Scan the PATH for available executables and return a mapping of command names to full paths."""
+    executables = {}
+    
+    # Get PATH from environment
+    path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+    
+    # Common executable extensions on different platforms
+    extensions = ['']  # No extension for Unix-like systems
+    if os.name == 'nt':  # Windows
+        extensions.extend(['.exe', '.bat', '.cmd', '.com'])
+    
+    for path_dir in path_dirs:
+        if not os.path.isdir(path_dir):
+            continue
+            
+        try:
+            for filename in os.listdir(path_dir):
+                file_path = os.path.join(path_dir, filename)
+                
+                # Check if it's an executable file
+                if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
+                    # Remove extension for the key
+                    base_name = filename
+                    for ext in extensions:
+                        if base_name.endswith(ext):
+                            base_name = base_name[:-len(ext)]
+                            break
+                    
+                    # Store the full path
+                    if base_name not in executables:
+                        executables[base_name] = file_path
+                        
+        except (OSError, PermissionError):
+            # Skip directories we can't access
+            continue
+    
+    return executables
+
+
+def resolve_executable_path(command: str, available_executables: Dict[str, str]) -> str:
+    """Resolve a command to its full executable path if it starts with an available executable."""
+    if not command or ' ' not in command:
+        return command
+    
+    # Get the first word (the command name)
+    parts = command.split()
+    command_name = parts[0]
+    
+    # Check if this command name exists in our available executables
+    if command_name in available_executables:
+        # Replace the command name with the full path
+        parts[0] = available_executables[command_name]
+        return ' '.join(parts)
+    
+    return command
 
 
 class AgentState(TypedDict):
@@ -279,14 +339,22 @@ Expected Output: [What you should see]
         import subprocess
         import shlex
         
+        # Scan for available executables and resolve command path
+        available_executables = scan_available_executables()
+        resolved_command = resolve_executable_path(command, available_executables)
+        
+        if state.get("debug", False):
+            print(f"fileagent: 🔍 Original command: {command}")
+            print(f"fileagent: 🔍 Resolved command: {resolved_command}")
+        
         # Check if command contains shell operators that require shell=True
         shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-        needs_shell = any(op in command for op in shell_operators)
+        needs_shell = any(op in resolved_command for op in shell_operators)
         
         if needs_shell:
             # Use shell=True for commands with operators
             process_result = subprocess.run(
-                command,
+                resolved_command,
                 shell=True,
                 executable="/bin/zsh",
                 capture_output=True,
@@ -295,7 +363,7 @@ Expected Output: [What you should see]
             )
         else:
             # Use shlex.split for simple commands without operators
-            args = shlex.split(command)
+            args = shlex.split(resolved_command)
             process_result = subprocess.run(
                 args, 
                 capture_output=True, 
@@ -764,14 +832,22 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 import subprocess
                 import shlex
                 
+                # Scan for available executables and resolve command path
+                available_executables = scan_available_executables()
+                resolved_command = resolve_executable_path(command, available_executables)
+                
+                if state.get("debug", False):
+                    print(f"fileagent: 🔍 Step {step_num} - Original command: {command}")
+                    print(f"fileagent: 🔍 Step {step_num} - Resolved command: {resolved_command}")
+                
                 # Check if command contains shell operators that require shell=True
                 shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-                needs_shell = any(op in command for op in shell_operators)
+                needs_shell = any(op in resolved_command for op in shell_operators)
                 
                 if needs_shell:
                     # Use shell=True for commands with operators
                     process_result = subprocess.run(
-                        command,
+                        resolved_command,
                         shell=True,
                         executable="/bin/zsh",
                         capture_output=True,
@@ -780,7 +856,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                     )
                 else:
                     # Use shlex.split for simple commands without operators
-                    args = shlex.split(command)
+                    args = shlex.split(resolved_command)
                     process_result = subprocess.run(
                         args, 
                         capture_output=True, 

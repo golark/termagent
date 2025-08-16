@@ -1,10 +1,13 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 import json
 import subprocess
 import os
 import re
+import shlex
+from termagent.task_complexity import TaskComplexityAnalyzer
+
 
 # Try to import LLM components
 try:
@@ -12,6 +15,64 @@ try:
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
+
+
+def scan_available_executables() -> Dict[str, str]:
+    """Scan the PATH for available executables and return a mapping of command names to full paths."""
+    executables = {}
+    
+    # Get PATH from environment
+    path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+    
+    # Common executable extensions on different platforms
+    extensions = ['']  # No extension for Unix-like systems
+    if os.name == 'nt':  # Windows
+        extensions.extend(['.exe', '.bat', '.cmd', '.com'])
+    
+    for path_dir in path_dirs:
+        if not os.path.isdir(path_dir):
+            continue
+            
+        try:
+            for filename in os.listdir(path_dir):
+                file_path = os.path.join(path_dir, filename)
+                
+                # Check if it's an executable file
+                if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
+                    # Remove extension for the key
+                    base_name = filename
+                    for ext in extensions:
+                        if base_name.endswith(ext):
+                            base_name = base_name[:-len(ext)]
+                            break
+                    
+                    # Store the full path
+                    if base_name not in executables:
+                        executables[base_name] = file_path
+                        
+        except (OSError, PermissionError):
+            # Skip directories we can't access
+            continue
+    
+    return executables
+
+
+def resolve_executable_path(command: str, available_executables: Dict[str, str]) -> str:
+    """Resolve a command to its full executable path if it starts with an available executable."""
+    if not command or ' ' not in command:
+        return command
+    
+    # Get the first word (the command name)
+    parts = command.split()
+    command_name = parts[0]
+    
+    # Check if this command name exists in our available executables
+    if command_name in available_executables:
+        # Replace the command name with the full path
+        parts[0] = available_executables[command_name]
+        return ' '.join(parts)
+    
+    return command
 
 
 class BaseAgent:
@@ -156,9 +217,17 @@ class BaseAgent:
     
     def _execute_shell_command(self, command: str, cwd: str = ".") -> str:
         try:
+            # Scan for available executables and resolve command path
+            available_executables = scan_available_executables()
+            resolved_command = resolve_executable_path(command, available_executables)
+            
+            if self.debug:
+                print(f"fileagent: 🔍 Original command: {command}")
+                print(f"fileagent: 🔍 Resolved command: {resolved_command}")
+            
             # Execute the command using zsh explicitly
             result = subprocess.run(
-                command,
+                resolved_command,
                 shell=True,
                 executable="/bin/zsh",
                 capture_output=True,
@@ -184,10 +253,18 @@ class BaseAgent:
     def _execute_interactive_command(self, command: str, cwd: str = ".") -> str:
         """Execute an interactive command like vim or nano."""
         try:
-            self._debug_print(f"Starting interactive command: {command}")
+            # Scan for available executables and resolve command path
+            available_executables = scan_available_executables()
+            resolved_command = resolve_executable_path(command, available_executables)
+            
+            if self.debug:
+                print(f"fileagent: 🔍 Interactive command - Original: {command}")
+                print(f"fileagent: 🔍 Interactive command - Resolved: {resolved_command}")
+            
+            self._debug_print(f"Starting interactive command: {resolved_command}")
             # Execute the command interactively (no output capture)
             result = subprocess.run(
-                command,
+                resolved_command,
                 shell=True,
                 executable="/bin/zsh",
                 cwd=cwd
