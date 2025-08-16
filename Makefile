@@ -25,7 +25,7 @@ run:
 
 # Run the application in debug mode
 debug:
-	uv run python -m termagent.main --debug --no-confirm
+	uv run python -m termagent.main --debug 
 
 # Run a single command and exit
 oneshot:

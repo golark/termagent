@@ -17,52 +17,6 @@ except ImportError:
     LLM_AVAILABLE = False
 
 
-def scan_available_executables() -> Dict[str, str]:
-    """Scan the PATH for available executables and return a mapping of command names to full paths."""
-    executables = {}
-    
-    # Get PATH from environment
-    path_dirs = os.environ.get('PATH', '').split(os.pathsep)
-    
-    for path_dir in path_dirs:
-        if not os.path.isdir(path_dir):
-            continue
-            
-        try:
-            for filename in os.listdir(path_dir):
-                file_path = os.path.join(path_dir, filename)
-                
-                # Check if it's an executable file
-                if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
-                    # Store the full path with filename as key
-                    if filename not in executables:
-                        executables[filename] = file_path
-                        
-        except (OSError, PermissionError):
-            # Skip directories we can't access
-            continue
-    
-    return executables
-
-
-def resolve_executable_path(command: str, available_executables: Dict[str, str]) -> str:
-    """Resolve a command to its full executable path if it starts with an available executable."""
-    if not command or ' ' not in command:
-        return command
-    
-    # Get the first word (the command name)
-    parts = command.split()
-    command_name = parts[0]
-    
-    # Check if this command name exists in our available executables
-    if command_name in available_executables:
-        # Replace the command name with the full path
-        parts[0] = available_executables[command_name]
-        return ' '.join(parts)
-    
-    return command
-
-
 class BaseAgent:
     """Base agent class for all agents in the system."""
     
@@ -183,28 +137,11 @@ class BaseAgent:
             print(f"\n❌ {operation_type.capitalize()} cancelled")
             return False
     
-    def _confirm_command(self, command: str) -> bool:
-        """Confirm command execution with user."""
-        if self.no_confirm:
-            return True
-            
-        print(f"Execute command: {command}")
-        print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
-        
-        try:
-            response = input().strip().lower()
-            if response in ['n', 'no', 'cancel', 'skip']:
-                print("❌ Command cancelled")
-                return False
-            else:
-                print("✅ Proceeding with command")
-                return True
-        except KeyboardInterrupt:
-            print("\n❌ Command cancelled")
-            return False
-    
     def _execute_shell_command(self, command: str, cwd: str = ".") -> str:
         try:
+            # Import the functions from shell_commands to avoid duplication
+            from termagent.shell_commands import scan_available_executables, resolve_executable_path
+            
             # Scan for available executables and resolve command path
             available_executables = scan_available_executables()
             resolved_command = resolve_executable_path(command, available_executables)
@@ -236,37 +173,6 @@ class BaseAgent:
             error_msg = f"Failed to execute shell command: {str(e)}"
             if self.debug:
                 self._debug_print(f"Exception during execution: {str(e)}")
-            return error_msg
-    
-    def _execute_interactive_command(self, command: str, cwd: str = ".") -> str:
-        """Execute an interactive command like vim or nano."""
-        try:
-            # Scan for available executables and resolve command path
-            available_executables = scan_available_executables()
-            resolved_command = resolve_executable_path(command, available_executables)
-            
-            if self.debug:
-                print(f"fileagent: 🔍 Interactive command - Original: {command}")
-                print(f"fileagent: 🔍 Interactive command - Resolved: {resolved_command}")
-            
-            self._debug_print(f"Starting interactive command: {resolved_command}")
-            # Execute the command interactively (no output capture)
-            result = subprocess.run(
-                resolved_command,
-                shell=True,
-                executable="/bin/zsh",
-                cwd=cwd
-            )
-            
-            if result.returncode == 0:
-                return f"✅ Interactive command completed: {command}"
-            else:
-                return f"⚠️ Interactive command exited with code {result.returncode}: {command}"
-                
-        except Exception as e:
-            error_msg = f"Failed to execute interactive command: {str(e)}"
-            if self.debug:
-                self._debug_print(f"Exception during interactive execution: {str(e)}")
             return error_msg
     
     def _add_message(self, state: Dict[str, Any], content: str, message_type: str = "success", **kwargs) -> Dict[str, Any]:
