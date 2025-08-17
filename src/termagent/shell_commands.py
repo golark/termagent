@@ -190,28 +190,13 @@ class ShellCommandDetector:
     
     def execute_command(self, command: str, cwd: str = ".") -> Tuple[bool, str, Optional[int], str]:
         """Execute a shell command directly."""
-        self._debug_print(f"execute_command called with command: '{command}', cwd: '{cwd}'")
         
         if not self.is_known_command(command):
-            self._debug_print(f"command '{command}' is not a known command")
             return False, "Command is not a known shell command", None, cwd
-        
-        self._debug_print(f"executing: {command}")
-        
-        # Check if this is a git command
-        is_git = self.is_git_command(command)
-        if is_git:
-            self._debug_print(f"detected git command: {command}")
-        
-        # Check if this is a package manager command
-        is_package_manager = self.is_package_manager_command(command)
-        if is_package_manager:
-            self._debug_print(f"detected package manager command: {command}")
-        
+               
         # Check if this is a navigation command (cd)
         is_navigation = self.is_navigation_command(command)
         if is_navigation:
-            self._debug_print(f"detected navigation command: {command}")
             # Handle cd command specially - it changes working directory
             success, message, new_cwd = self.change_directory(command, cwd)
             if success:
@@ -223,12 +208,10 @@ class ShellCommandDetector:
         
         # Check if this is pwd command to show current directory
         if command.strip().lower() == "pwd":
-            self._debug_print("detected pwd command")
             return True, self.show_current_directory(cwd), 0, cwd
         
         # Handle command aliases
         if command.strip().lower() == "ll":
-            self._debug_print("detected ll command (alias for ls -la)")
             # Execute ls -la directly instead of recursive call
             try:
                 process_result = subprocess.run(
@@ -268,10 +251,7 @@ class ShellCommandDetector:
                     command_type = "system command"
                     action = "monitoring"
                 
-                if self.debug:
-                    self._debug_print(f"🔍 Interactive command: {command}")
-                
-                self._debug_print(f"Starting interactive {command_type}: {command}")
+                # Interactive command handling
                 # Note: This will block until the command is closed
                 process_result = subprocess.run(
                     command,
@@ -282,8 +262,6 @@ class ShellCommandDetector:
                 return True, f"✅ Interactive {command_type} {base_command} finished {action} (exit code: {process_result.returncode})", process_result.returncode, cwd
             else:
                 # Regular command execution with output capture
-                if self.debug:
-                    self._debug_print(f"🔍 Executing command: {command}")
                 
                 # Check if command contains shell operators that require shell=True
                 shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
@@ -467,8 +445,8 @@ class ShellCommandDetector:
         return os.getcwd()
     
     def show_current_directory(self, cwd: str = None) -> str:
-        """Get a formatted string showing the current working directory."""
+        """Get the current working directory."""
         if cwd is None:
             import os
             cwd = os.getcwd()
-        return f"📁 Current working directory: {cwd}"
+        return cwd

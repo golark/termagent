@@ -582,26 +582,7 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     # Create detector instance
     detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
     
-    # Check if confirmation is needed
-    if not state.get("no_confirm", False):
-        print(f"Execute shell command: {last_command}")
-        print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
-        
-        try:
-            response = input().strip().lower()
-            if response in ['n', 'no', 'cancel', 'skip']:
-                messages.append(AIMessage(content=f"❌ Shell command cancelled: {last_command}"))
-                return {
-                    **state,
-                    "messages": messages
-                }
-        except KeyboardInterrupt:
-            print("\n❌ Shell command cancelled")
-            messages.append(AIMessage(content=f"❌ Shell command cancelled: {last_command}"))
-            return {
-                **state,
-                "messages": messages
-            }
+    # Shell commands execute directly without confirmation
     
     # Execute the command
     current_cwd = state.get("current_working_directory", os.getcwd())
@@ -820,8 +801,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 
                 # Check if confirmation is needed for task breakdown steps
                 if not state.get("no_confirm", False):
-                    print(f"> {command}")
-                    print(f"Press ↵ to confirm, 'n' to cancel: ", end="")
+                    print(f"> {command}  (↵ to confirm) ", end="")
                     
                     try:
                         response = input().strip().lower()
@@ -938,13 +918,12 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     failure_count = len(failed_steps)
     
     if failure_count == 0:
-        completion_message = "🎉 All steps completed successfully!\n\n"
-        completion_message += "Summary:\n"
+        completion_message = ""
         for result in results:
             completion_message += f"  {result}\n"
     else:
         completion_message = f"⚠️ Task completed with {success_count} successful and {failure_count} failed steps.\n\n"
-        completion_message += "Summary:\n"
+        completion_message += ""
         for result in results:
             completion_message += f"  {result}\n"
         
