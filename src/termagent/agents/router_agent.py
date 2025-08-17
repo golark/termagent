@@ -176,7 +176,7 @@ class RouterAgent(BaseAgent):
     def _break_down_task(self, state: Dict[str, Any], task: str) -> Dict[str, Any]:
 
         # step 1 - Check if this is a known shell command that should be executed directly
-        if self.shell_detector.should_execute_directly(task):
+        if self.shell_detector.is_shell_command(task):
             self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
         
