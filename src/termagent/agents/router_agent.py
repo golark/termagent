@@ -12,12 +12,12 @@ from termagent.directory_context import get_directory_context, get_relevant_file
 class RouterAgent(BaseAgent):
     """Router agent that breaks down tasks into steps."""
     
-    def __init__(self, debug: bool = False, no_confirm: bool = False):
+    def __init__(self, debug: bool = False, no_confirm: bool = False, llm_model: str = "gpt-3.5-turbo"):
         super().__init__("router_agent", debug, no_confirm)
         
         self.shell_detector = ShellCommandDetector(debug=debug, no_confirm=no_confirm)
         
-        self._initialize_llm()
+        self._initialize_llm(llm_model)
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
         """Check if there are messages to process."""
@@ -59,7 +59,6 @@ class RouterAgent(BaseAgent):
         if successful_breakdowns:
             historical_breakdown = self._search_task_breakdown_cache(task, successful_breakdowns)
             if historical_breakdown:
-                self._debug_print(f"Found matching task breakdown in history, reusing it")
                 return self._create_task_breakdown_state(state, task, historical_breakdown)
        
         # Step 3 - Use LLM for intelligent task breakdown
@@ -87,33 +86,37 @@ class RouterAgent(BaseAgent):
 """
         except Exception as e:
             context_info = f"⚠️  Could not get directory context: {e}\n\n"
+
         
         
-        system_prompt = f"""You are a task analysis expert. Given a task or a query, break it down into the MINIMAL number of logical steps. 
+        system_prompt = f"""You are a task analysis expert. Your job is to break down a given task into the absolute MINIMAL number of logical steps.
 
 {context_info}
 
-CRITICAL RULES:
-1. Use the FEWEST possible steps to accomplish the task
-2. Each step must be ACTIONABLE and directly contribute to solving the task
-3. Avoid unnecessary "discovery" steps unless they're absolutely required
-4. If the user provides specific names/identifiers, use them directly
-5. Combine related operations into single steps when possible
-6. Only create separate steps when they are truly sequential dependencies
-7. Use the directory context above to understand the current workspace structure
-8. Reference specific files and directories that exist in the workspace when relevant
-9. When output from one command needs to be fed into the next command, use piping operators (|) to keep them in a single step
-10. Prefer single commands with pipes over multiple separate steps when data flows between commands
+RULES:
+1. Use the FEWEST possible steps — combine actions when they can be done in a single command.
+2. Each step must be ACTIONABLE (something a user can execute directly).
+3. Avoid unnecessary "discovery" or exploratory steps unless required by the task.
+4. If specific names/identifiers are given, use them directly (no guessing).
+5. Reference actual files/directories from the provided workspace context when relevant.
+6. When the output of one command is used in the next, prefer a single step with pipes (|).
+7. When independent commands can be executed together, prefer a one-liner with `&&`.
+8. Only separate steps if they are true sequential dependencies that cannot be merged.
+9. Before returning the breakdown, perform a META-CHECK:  
+   - Verify that no two steps can be combined into a one-liner with `|` or `&&`.  
+   - Verify that each step is absolutely necessary.  
+   - If possible, reduce the total number of steps further.
 
-For each step, provide:
-1. A clear description of what needs to be done
-2. Any specific commands or actions needed
-
-Return the breakdown as a JSON list of objects with keys: "step", "description", "command".
+OUTPUT FORMAT:
+Return the breakdown as a JSON array of objects.  
+Each object must have:
+- `"step"`: sequential number starting at 1  
+- `"description"`: clear explanation of the action  
+- `"command"`: the exact command to run  
 
 EXAMPLES:
 
-Task: "stop docker container nginxx"
+Task: "stop docker container nginxx"  
 Breakdown: [
   {{
     "step": 1,
@@ -121,7 +124,8 @@ Breakdown: [
     "command": "docker stop nginxx"
   }}
 ]
-Task: "create a new git branch called feature-x"
+
+Task: "create a new git branch called feature-x"  
 Breakdown: [
   {{
     "step": 1,
@@ -129,7 +133,8 @@ Breakdown: [
     "command": "git checkout -b feature-x"
   }}
 ]
-Task: "check how many python files are in this directory"
+
+Task: "check how many python files are in this directory"  
 Breakdown: [
   {{
     "step": 1,
@@ -137,7 +142,15 @@ Breakdown: [
     "command": "ls *.py | wc -l"
   }}
 ]
-"""
+
+Task: "what is the largest file in directory?"  
+Breakdown: [
+  {{
+    "step": 1,
+    "description": "List files by size and return the largest one",
+    "command": "ls -lS | head -n 1"
+  }}
+]"""
 
         try:
             messages = [
@@ -180,7 +193,7 @@ Breakdown: [
         for breakdown in cache:
             command = breakdown.get("command", "").lower().strip()
             if command == task_lower:
-                self._debug_print(f"Found exact command match in successful breakdowns: {command}")
+                self._debug_print(f"Found exact command match in cache: {command}")
                 return breakdown.get("task_breakdown")
                
         return None
