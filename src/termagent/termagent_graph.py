@@ -836,7 +836,9 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     task_breakdown = state.get("task_breakdown", [])
     current_step = state.get("current_step", 0)
     total_steps = state.get("total_steps", 0)
-    
+
+    print('handle task breakdown')
+
     if not task_breakdown or current_step >= total_steps:
         messages.append(AIMessage(content="✅ Task breakdown completed or no steps remaining."))
         return {
@@ -996,6 +998,8 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         results.append(f"Step {step_num}: {result}")
         messages.append(AIMessage(content=result))
     
+    print('completed task breakdown')
+
     # Add completion message with success/failure summary
     success_count = len([r for r in results if "✅" in r])
     failure_count = len(failed_steps)
@@ -1052,6 +1056,8 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         
         # Save to disk for persistence
         save_successful_task_breakdowns(successful_task_breakdowns)
+    
+    print('returning from task breakdown')
     
     return {
         **state,

@@ -221,12 +221,12 @@ class RouterAgent(BaseAgent):
             
             return self._create_query_state(state, task, query_type, is_complex)
         
-        # Check if this is a known shell command that should be executed directly
+        # Step 1 - Check if this is a known shell command that should be executed directly
         if self.shell_detector.should_execute_directly(task):
             self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
         
-        # First, check if we have a successful task breakdown in history
+        # Step 2 - Check if we have a successful task breakdown in history
         successful_breakdowns = state.get("successful_task_breakdowns", [])
         if successful_breakdowns:
             self._debug_print(f"Checking {len(successful_breakdowns)} successful task breakdowns in history")
@@ -234,17 +234,8 @@ class RouterAgent(BaseAgent):
             if historical_breakdown:
                 self._debug_print(f"Found matching task breakdown in history, reusing it")
                 return self._create_task_breakdown_state(state, task, historical_breakdown)
-        
-        # Then, check command history for similar commands
-        self._debug_print(f"Checking command history for similar commands")
-        historical_command = self._search_command_history(task)
-        if historical_command:
-            self._debug_print(f"Found similar command in history: {historical_command}")
-            # If we found a similar command, we could potentially reuse its breakdown
-            # For now, we'll just log it and continue with LLM breakdown
-        
-        # Use LLM for intelligent task breakdown
-        self._debug_print(f"Attempting LLM task breakdown")
+       
+        # Step 3 - Use LLM for intelligent task breakdown
         breakdown = self._llm_task_breakdown(task)
         if breakdown:
             self._debug_print(f"LLM breakdown successful, routing to task breakdown")
@@ -260,20 +251,13 @@ class RouterAgent(BaseAgent):
         complexity_analysis = self.complexity_analyzer.analyze_complexity(task)
         recommended_model = complexity_analysis['recommended_model']
         
-        self._debug_print(f"Task complexity analysis: {complexity_analysis['complexity_score']} score, {complexity_analysis['reasoning_score']} reasoning")
-        self._debug_print(f"Using model: {recommended_model}")
+        self._debug_print(f"Task complexity analysis: {complexity_analysis['complexity_score']} score, {complexity_analysis['reasoning_score']} reasoning, using model: {recommended_model}")
         
         # Reinitialize LLM with the recommended model if different from current
         if not self.llm or getattr(self.llm, 'model_name', '') != recommended_model:
             self._debug_print(f"🔄 Switching LLM model to {recommended_model}")
             self._initialize_llm(recommended_model)
-        
-        # Show which model is being used for this task
-        if recommended_model == "gpt-4o":
-            self._debug_print(f"🧠 Using GPT-4o for complex reasoning task")
-        else:
-            self._debug_print(f"⚡ Using GPT-3.5-turbo for simple task")
-        
+       
         # Get directory context for the LLM
         try:
             current_dir = os.getcwd()
@@ -416,33 +400,7 @@ Breakdown: [
             if command == task_lower:
                 self._debug_print(f"Found exact command match in successful breakdowns: {command}")
                 return breakdown.get("task_breakdown")
-        
-        # Then, try partial command matches
-        for breakdown in successful_breakdowns:
-            command = breakdown.get("command", "").lower().strip()
-            if task_lower in command or command in task_lower:
-                self._debug_print(f"Found partial command match in successful breakdowns: {command}")
-                return breakdown.get("task_breakdown")
-        
-        # Finally, try semantic similarity (simple keyword matching)
-        task_words = set(task_lower.split())
-        best_match = None
-        best_score = 0
-        
-        for breakdown in successful_breakdowns:
-            command = breakdown.get("command", "").lower().strip()
-            command_words = set(command.split())
-            
-            # Calculate simple word overlap score
-            overlap = len(task_words.intersection(command_words))
-            if overlap > best_score:
-                best_score = overlap
-                best_match = breakdown
-        
-        if best_match and best_score >= 2:  # Require at least 2 words to match
-            self._debug_print(f"Found semantic match in successful breakdowns with score {best_score}: {best_match.get('command')}")
-            return best_match.get("task_breakdown")
-        
+               
         return None
     
     def _search_command_history(self, task: str) -> Optional[str]:
