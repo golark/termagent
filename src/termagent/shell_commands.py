@@ -101,32 +101,6 @@ class ShellCommandDetector:
             else:
                 return False, message, 1, cwd
         
-       
-        # Handle command aliases
-        if command.strip().lower() == "ll":
-            # Execute ls -la directly instead of recursive call
-            try:
-                process_result = subprocess.run(
-                    ["ls", "-la"],
-                    capture_output=True,
-                    text=True,
-                    cwd=cwd,
-                    timeout=30
-                )
-                
-                if process_result.returncode == 0:
-                    output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
-                    return True, output, process_result.returncode, cwd
-                else:
-                    error_msg = process_result.stderr.strip() if process_result.stderr.strip() else "Command failed with no error output"
-                    return False, f"❌ Command failed: {error_msg}", process_result.returncode, cwd
-                    
-            except subprocess.TimeoutExpired:
-                return False, f"⏰ Command timed out after 30 seconds: ll", None, cwd
-            except FileNotFoundError:
-                return False, f"❌ Command not found: ll", None, cwd
-            except Exception as e:
-                return False, f"❌ Command execution error: ll\nError: {str(e)}", None, cwd
         
         # Check if this is an interactive command (editor or system command)
         parts = shlex.split(command.strip())
