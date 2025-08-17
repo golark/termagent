@@ -721,49 +721,36 @@ def handle_query(state: AgentState) -> AgentState:
                 context_info = f"⚠️  Could not get directory context: {e}\n\n"
             
             # Create system prompt for multi-step query analysis
-            system_prompt = f"""You are an expert query analyzer using GPT-4o. Given a user query, analyze it and provide a structured, multi-step approach to answer it effectively.
+            system_prompt = f"""You are an expert query analyzer using GPT-4o. Given a user query, analyze it and provide a structured, multi-step approach where each step is executable by shell commands.
 
 {context_info}
 
 Your task is to:
 1. Understand what the user is asking
 2. Break down the query into 3-7 logical, actionable steps
-3. Provide specific guidance for each step
-4. Suggest relevant commands, tools, or approaches when appropriate
-5. Consider the current workspace context
-6. Provide explanations for why certain approaches are chosen
-
-IMPORTANT REQUIREMENTS:
-- Break down the query into MULTIPLE actionable steps (3-7 steps)
-- Each step must be specific and actionable
-- Provide clear guidance on what to do at each step
-- Suggest specific commands or tools when relevant
-- Consider the current workspace structure
-- Be helpful and informative
-- Focus on practical, executable solutions
+3. Ensure EVERY step includes a shell-executable command
+4. Consider the current workspace context
 
 STEP STRUCTURE:
 For each step, provide:
 1. Step number and title
-2. Clear description of what to do
-3. Specific commands or tools to use (if applicable)
-4. Expected outcome or what to look for
-5. Any considerations or warnings
+2. Shell command(s) that can be executed directly
+3. Expected outcome or what to look for
 
 Return your response in a clear, structured format with numbered steps that the user can follow sequentially.
 
 Example format:
 Step 1: [Title]
-Description: [What to do]
-Commands: [Specific commands if applicable]
+Command: `ls -la`
 Expected Outcome: [What you should see/achieve]
 
 Step 2: [Title]
-Description: [What to do]
-Commands: [Specific commands if applicable]
+Command: `grep -r "pattern" .`
 Expected Outcome: [What you should see/achieve]
 
-[Continue for all steps...]"""
+[Continue for all steps...]
+
+IMPORTANT: Every step must include a shell command that can be executed immediately. If a step doesn't have a command, it's not actionable."""
 
             # Create messages for LLM
             llm_messages = [
@@ -780,10 +767,75 @@ Expected Outcome: [What you should see/achieve]
             analysis_response += f"📋 Query: {query}\n"
             analysis_response += f"🔍 Type: {query_type}\n\n"
             analysis_response += f"📋 Multi-Step Approach:\n{analysis_content}\n\n"
-            analysis_response += "💡 Follow these steps sequentially to answer your query. "
-            analysis_response += "Each step builds on the previous one to provide a comprehensive solution."
+            analysis_response += "🚀 Now executing each step automatically...\n"
             
             messages.append(AIMessage(content=analysis_response))
+            
+            # Parse and execute each step
+            import re
+            import subprocess
+            import os
+            
+            # Extract steps from the LLM response
+            step_pattern = r'Step (\d+):\s*([^\n]+)\nCommand:\s*`([^`]+)`\nExpected Outcome:\s*([^\n]+)'
+            steps = re.findall(step_pattern, analysis_content, re.MULTILINE)
+            
+            if steps:
+                execution_results = []
+                current_dir = state.get("current_working_directory", os.getcwd())
+                
+                for step_num, title, command, expected_outcome in steps:
+                    step_message = f"🚀 Executing Step {step_num}: {title}\n"
+                    step_message += f"   Command: {command}\n"
+                    step_message += f"   Expected: {expected_outcome}\n"
+                    messages.append(AIMessage(content=step_message))
+                    
+                    try:
+                        # Execute the command
+                        result = subprocess.run(
+                            command,
+                            shell=True,
+                            cwd=current_dir,
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        
+                        if result.returncode == 0:
+                            step_result = f"✅ Step {step_num} completed successfully!\n"
+                            step_result += f"   Output:\n{result.stdout.strip() if result.stdout else '(no output)'}"
+                            execution_results.append(step_result)
+                            messages.append(AIMessage(content=step_result))
+                        else:
+                            step_result = f"❌ Step {step_num} failed with exit code {result.returncode}\n"
+                            step_result += f"   Error: {result.stderr.strip() if result.stderr else '(no error output)'}"
+                            execution_results.append(step_result)
+                            messages.append(AIMessage(content=step_result))
+                            
+                    except subprocess.TimeoutExpired:
+                        step_result = f"⏰ Step {step_num} timed out after 30 seconds"
+                        execution_results.append(step_result)
+                        messages.append(AIMessage(content=step_result))
+                    except Exception as e:
+                        step_result = f"❌ Step {step_num} failed with exception: {str(e)}"
+                        execution_results.append(step_result)
+                        messages.append(AIMessage(content=step_result))
+                
+                # Create final summary
+                final_summary = f"🎯 Query Execution Complete!\n\n"
+                final_summary += f"📋 Query: {query}\n"
+                final_summary += f"🔍 Type: {query_type}\n"
+                final_summary += f"📊 Steps executed: {len(steps)}\n\n"
+                final_summary += "📋 Execution Results:\n"
+                for i, result in enumerate(execution_results, 1):
+                    final_summary += f"{i}. {result}\n\n"
+                
+                messages.append(AIMessage(content=final_summary))
+            else:
+                # If no steps were parsed, provide the analysis without execution
+                no_execution_msg = "⚠️ Could not parse executable steps from the analysis. "
+                no_execution_msg += "Please review the steps above and execute them manually."
+                messages.append(AIMessage(content=no_execution_msg))
             
         else:
             # Fallback if GPT-4o is not available
