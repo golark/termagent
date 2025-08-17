@@ -102,6 +102,8 @@ CRITICAL RULES:
 6. Only create separate steps when they are truly sequential dependencies
 7. Use the directory context above to understand the current workspace structure
 8. Reference specific files and directories that exist in the workspace when relevant
+9. When output from one command needs to be fed into the next command, use piping operators (|) to keep them in a single step
+10. Prefer single commands with pipes over multiple separate steps when data flows between commands
 
 For each step, provide:
 1. A clear description of what needs to be done
@@ -135,16 +137,7 @@ Breakdown: [
     "command": "ls *.py | wc -l"
   }}
 ]
-
-Task: "list all files in current directory"
-Breakdown: [
-  {{
-    "step": 1,
-    "description": "List all files in current directory",
-    "agent": "shell_command",
-    "command": "ls -la"
-  }}
-]"""
+"""
 
         try:
             messages = [
