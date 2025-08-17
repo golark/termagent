@@ -61,15 +61,21 @@ class ShellCommandDetector:
     def __init__(self, debug: bool = False, no_confirm: bool = False):
         self.debug = debug
         self.no_confirm = no_confirm
+        self._aliases_cache = {}
+        self._aliases_loaded = False
     
     def _debug_print(self, message: str):
         if self.debug:
             print(f"shell_commands | {message}")
-      
+    
     def is_shell_command(self, command: str) -> bool:
         if not command or not command.strip():
             return False
         
+        # First, resolve alias if applicable
+        resolved = self.resolve_alias(command)
+        if resolved:
+            command = resolved
         command = command.strip().lower()
         base = command.split()[0].lower()
 
@@ -88,7 +94,12 @@ class ShellCommandDetector:
         return False
     
     def execute_command(self, command: str, cwd: str = ".") -> Tuple[bool, str, Optional[int], str]:
-        
+       
+        # Resolve alias before execution
+        resolved_command = self.resolve_alias(command)
+        if resolved_command:
+            command = resolved_command
+
         # Check if this is a navigation command (cd)
         is_navigation = self.is_navigation_command(command)
         if is_navigation:
@@ -246,4 +257,136 @@ class ShellCommandDetector:
         
         self._debug_print(f"cd: changing from {current_cwd} to {new_cwd}")
         return True, f"✅ Changed directory to: {new_cwd}", new_cwd
+    
+    def show_current_directory(self, cwd: str) -> str:
+        """Show the current working directory."""
+        return f"Current directory: {cwd}"
+
+    def resolve_alias(self, command: str) -> Optional[str]:
+        """Resolve shell alias to its actual command."""
+        if not command or not command.strip():
+            return None
+        
+        # Load aliases if not already loaded
+        if not self._aliases_loaded:
+            self._load_aliases()
+        
+        # Get the base command (first word)
+        base_command = command.split()[0].strip()
+        
+        # Check if we have this alias cached
+        if base_command in self._aliases_cache:
+            alias_value = self._aliases_cache[base_command]
+            self._debug_print(f"Resolved alias '{base_command}' -> '{alias_value}'")
+            
+            # Replace the base command with the alias value
+            if len(command.split()) > 1:
+                # Keep the arguments
+                return f"{alias_value} {' '.join(command.split()[1:])}"
+            else:
+                return alias_value
+        
+        return None
+    
+    def _load_aliases(self):
+        """Load shell aliases from configuration files and shell."""
+        self._debug_print("Loading shell aliases...")
+        
+        # Try to get aliases from the current shell
+        try:
+            # Use 'alias' command to get current shell aliases
+            result = subprocess.run(
+                ['alias'],
+                capture_output=True,
+                text=True,
+                shell=True,
+                executable="/bin/zsh"
+            )
+            
+            if result.returncode == 0:
+                self._parse_alias_output(result.stdout)
+            
+        except Exception as e:
+            self._debug_print(f"Failed to load aliases from shell: {e}")
+        
+        # Also try to read from common shell config files
+        self._load_aliases_from_files()
+        
+        self._aliases_loaded = True
+        self._debug_print(f"Loaded {len(self._aliases_cache)} aliases")
+    
+    def _parse_alias_output(self, alias_output: str):
+        """Parse the output of the 'alias' command."""
+        for line in alias_output.strip().split('\n'):
+            if '=' in line:
+                # Format: alias name='value' or alias name="value"
+                parts = line.split('=', 1)
+                if len(parts) == 2:
+                    alias_name = parts[0].replace('alias ', '').strip()
+                    alias_value = parts[1].strip()
+                    
+                    # Remove quotes if present
+                    if (alias_value.startswith("'") and alias_value.endswith("'")) or \
+                       (alias_value.startswith('"') and alias_value.endswith('"')):
+                        alias_value = alias_value[1:-1]
+                    
+                    self._aliases_cache[alias_name] = alias_value
+    
+    def _load_aliases_from_files(self):
+        """Load aliases from common shell configuration files."""
+        config_files = [
+            os.path.expanduser("~/.zshrc"),
+            os.path.expanduser("~/.bashrc"),
+            os.path.expanduser("~/.bash_profile"),
+            os.path.expanduser("~/.profile")
+        ]
+        
+        for config_file in config_files:
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, 'r') as f:
+                        content = f.read()
+                        self._parse_config_file(content)
+                except Exception as e:
+                    self._debug_print(f"Failed to read {config_file}: {e}")
+    
+    def _parse_config_file(self, content: str):
+        """Parse shell configuration file content for alias definitions."""
+        for line in content.split('\n'):
+            line = line.strip()
+            # Skip comments and empty lines
+            if not line or line.startswith('#'):
+                continue
+            
+            # Look for alias definitions
+            if line.startswith('alias '):
+                # Format: alias name='value' or alias name="value"
+                alias_part = line[6:]  # Remove 'alias ' prefix
+                if '=' in alias_part:
+                    parts = alias_part.split('=', 1)
+                    if len(parts) == 2:
+                        alias_name = parts[0].strip()
+                        alias_value = parts[1].strip()
+                        
+                        # Remove quotes if present
+                        if (alias_value.startswith("'") and alias_value.endswith("'")) or \
+                           (alias_value.startswith('"') and alias_value.endswith('"')):
+                            alias_value = alias_value[1:-1]
+                        
+                        # Only add if not already present (shell aliases take precedence)
+                        if alias_name not in self._aliases_cache:
+                            self._aliases_cache[alias_name] = alias_value
+    
+    def get_aliases(self) -> Dict[str, str]:
+        """Get all loaded aliases."""
+        if not self._aliases_loaded:
+            self._load_aliases()
+        return self._aliases_cache.copy()
+    
+    def clear_aliases_cache(self):
+        """Clear the aliases cache to force reloading."""
+        self._aliases_cache.clear()
+        self._aliases_loaded = False
+        self._debug_print("Aliases cache cleared")
+      
   
