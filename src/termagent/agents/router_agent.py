@@ -133,16 +133,10 @@ class RouterAgent(BaseAgent):
     def __init__(self, debug: bool = False, no_confirm: bool = False):
         super().__init__("router_agent", debug, no_confirm)
         
-        # Initialize shell command detector
         self.shell_detector = ShellCommandDetector(debug=debug, no_confirm=no_confirm)
-        
-        # Initialize query detector
         self.query_detector = QueryDetector(debug=debug)
-        
-        # Initialize task complexity analyzer
         self.complexity_analyzer = TaskComplexityAnalyzer(debug=debug)
         
-        # Initialize LLM for task breakdown if available
         self._initialize_llm()
     
     def should_handle(self, state: Dict[str, Any]) -> bool:
@@ -180,7 +174,6 @@ class RouterAgent(BaseAgent):
             self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
         
-        
         # step 2 - check if this is a question/informational query
         if self.query_detector.is_question(task):
             # Check if this is a complex query that would benefit from GPT-4o
@@ -190,10 +183,8 @@ class RouterAgent(BaseAgent):
                 self._debug_print(f"Routing to query handler - complex query detected")
             else:
                 self._debug_print(f"Routing to query handler - simple query")
-            
             return self._create_query_state(state, task, is_complex)
         
-       
         # step 3 - Check if we have a successful task breakdown in history
         successful_breakdowns = state.get("successful_task_breakdowns", [])
         if successful_breakdowns:
@@ -370,27 +361,7 @@ Breakdown: [
                 return breakdown.get("task_breakdown")
                
         return None
-    
-    def _search_command_history(self, task: str) -> Optional[str]:
-        """Search through command history for a matching command."""
-        try:
-            from termagent.input_handler import CommandHistory
-            
-            # Create a temporary command history instance to search
-            history = CommandHistory()
-            matches = history.search_history(task)
-            
-            if matches:
-                # Return the most recent match
-                best_match = matches[-1]
-                self._debug_print(f"Found command in history: {best_match}")
-                return best_match
-            
-        except Exception as e:
-            self._debug_print(f"Error searching command history: {e}")
-        
-        return None
-    
+   
     def _create_task_breakdown_state(self, state: Dict[str, Any], task: str, breakdown: List[Dict[str, str]]) -> Dict[str, Any]:
         """Create state with task breakdown information."""
         messages = state.get("messages", [])

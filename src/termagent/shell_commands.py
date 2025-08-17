@@ -388,5 +388,3 @@ class ShellCommandDetector:
         self._aliases_cache.clear()
         self._aliases_loaded = False
         self._debug_print("Aliases cache cleared")
-      
-  
