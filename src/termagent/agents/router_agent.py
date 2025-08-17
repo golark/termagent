@@ -247,7 +247,7 @@ IMPORTANT: This is a complex task requiring advanced reasoning. Use GPT-4o's enh
 This is a straightforward task. Provide a simple, direct breakdown focusing on efficiency.
 """
         
-        system_prompt = f"""You are a task analysis expert. Given a task, break it down into the MINIMAL number of logical steps and assign the most appropriate agent for each step.
+        system_prompt = f"""You are a task analysis expert. Given a task or a query, break it down into the MINIMAL number of logical steps. 
 
 {context_info}
 
@@ -263,15 +263,11 @@ CRITICAL RULES:
 7. Use the directory context above to understand the current workspace structure
 8. Reference specific files and directories that exist in the workspace when relevant
 
-Available agents:
-- shell_command: For system commands, git operations, file operations, Docker, and other operations
-
 For each step, provide:
 1. A clear description of what needs to be done
-2. The most appropriate agent to handle it
-3. Any specific commands or actions needed
+2. Any specific commands or actions needed
 
-Return the breakdown as a JSON list of objects with keys: "step", "description", "agent", "command".
+Return the breakdown as a JSON list of objects with keys: "step", "description", "command".
 
 EXAMPLES:
 
@@ -280,7 +276,6 @@ Breakdown: [
   {{
     "step": 1,
     "description": "Stop the Docker container named nginxx",
-    "agent": "shell_command",
     "command": "docker stop nginxx"
   }}
 ]
@@ -290,7 +285,6 @@ Breakdown: [
   {{
     "step": 1,
     "description": "Create and switch to new git branch feature-x",
-    "agent": "shell_command",
     "command": "git checkout -b feature-x"
   }}
 ]
@@ -300,7 +294,6 @@ Breakdown: [
   {{
     "step": 1,
     "description": "Count Python files in current directory",
-    "agent": "shell_command",
     "command": "ls *.py | wc -l"
   }}
 ]
