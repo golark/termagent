@@ -101,10 +101,7 @@ class ShellCommandDetector:
             else:
                 return False, message, 1, cwd
         
-        # Check if this is pwd command to show current directory
-        if command.strip().lower() == "pwd":
-            return True, self.show_current_directory(cwd), 0, cwd
-        
+       
         # Handle command aliases
         if command.strip().lower() == "ll":
             # Execute ls -la directly instead of recursive call
@@ -275,10 +272,4 @@ class ShellCommandDetector:
         
         self._debug_print(f"cd: changing from {current_cwd} to {new_cwd}")
         return True, f"✅ Changed directory to: {new_cwd}", new_cwd
-   
-    def show_current_directory(self, cwd: str = None) -> str:
-        """Get the current working directory."""
-        if cwd is None:
-            import os
-            cwd = os.getcwd()
-        return cwd
+  
