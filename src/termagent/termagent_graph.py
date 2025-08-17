@@ -388,34 +388,19 @@ Expected Output: [What you should see]
     # Execute the command
     try:
         import subprocess
-        import shlex
         
         if state.get("debug", False):
             print(f"🔍 Executing command: {command}")
         
-        # Check if command contains shell operators that require shell=True
-        shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-        needs_shell = any(op in command for op in shell_operators)
-        
-        if needs_shell:
-            # Use shell=True for commands with operators
-            process_result = subprocess.run(
-                command,
-                shell=True,
-                executable="/bin/zsh",
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-        else:
-            # Use shlex.split for simple commands without operators
-            args = shlex.split(command)
-            process_result = subprocess.run(
-                args, 
-                capture_output=True, 
-                text=True, 
-                timeout=30
-            )
+        # Execute all commands using shell=True for consistent behavior
+        process_result = subprocess.run(
+            command,
+            shell=True,
+            executable="/bin/zsh",
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
         
         if process_result.returncode == 0:
             output = process_result.stdout.strip() if process_result.stdout.strip() else "✅ Command executed successfully"
@@ -866,7 +851,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         
         messages.append(AIMessage(content=step_message))
         
-        # Execute the command (all commands are now shell commands)
         step_success = False
         step_attempts = 0
         max_attempts = 3  # Allow up to 3 attempts per step
@@ -880,9 +864,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
             
             try:
                 import subprocess
-                import shlex
-                
-
                 
                 # Check if confirmation is needed for task breakdown steps
                 if not state.get("no_confirm", False):
@@ -903,30 +884,18 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 if state.get("debug", False):
                     print(f"🔍 Step {step_num} - Executing command: {command}")
                 
-                # Check if command contains shell operators that require shell=True
-                shell_operators = ['|', '>', '<', '>>', '<<', '&&', '||', ';', '(', ')', '`', '$(']
-                needs_shell = any(op in command for op in shell_operators)
-                
-                if needs_shell:
-                    # Use shell=True for commands with operators
-                    process_result = subprocess.run(
-                        command,
-                        shell=True,
-                        executable="/bin/zsh",
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                else:
-                    # Use shlex.split for simple commands without operators
-                    args = shlex.split(command)
-                    process_result = subprocess.run(
-                        args, 
-                        capture_output=True, 
-                        text=True, 
-                        timeout=30
-                    )
-                
+                # Execute all commands using shell=True for consistent behavior
+                process_result = subprocess.run(
+                    command,
+                    shell=True,
+                    executable="/bin/zsh",
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                print('process_result:', process_result)
+
                 if process_result.returncode == 0:
                     result = f"✅ Command executed: {command}"
                     if process_result.stdout.strip():
