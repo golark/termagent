@@ -226,6 +226,23 @@ class RouterAgent(BaseAgent):
             self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
         
+        # First, check if we have a successful task breakdown in history
+        successful_breakdowns = state.get("successful_task_breakdowns", [])
+        if successful_breakdowns:
+            self._debug_print(f"Checking {len(successful_breakdowns)} successful task breakdowns in history")
+            historical_breakdown = self._search_successful_task_breakdowns(task, successful_breakdowns)
+            if historical_breakdown:
+                self._debug_print(f"Found matching task breakdown in history, reusing it")
+                return self._create_task_breakdown_state(state, task, historical_breakdown)
+        
+        # Then, check command history for similar commands
+        self._debug_print(f"Checking command history for similar commands")
+        historical_command = self._search_command_history(task)
+        if historical_command:
+            self._debug_print(f"Found similar command in history: {historical_command}")
+            # If we found a similar command, we could potentially reuse its breakdown
+            # For now, we'll just log it and continue with LLM breakdown
+        
         # Use LLM for intelligent task breakdown
         self._debug_print(f"Attempting LLM task breakdown")
         breakdown = self._llm_task_breakdown(task)
@@ -386,6 +403,68 @@ Breakdown: [
             self._debug_print(f"LLM breakdown failed: {e}")
             return []
     
+    def _search_successful_task_breakdowns(self, task: str, successful_breakdowns: List[Dict[str, Any]]) -> Optional[List[Dict[str, str]]]:
+        """Search through successful task breakdowns for a matching command."""
+        if not successful_breakdowns:
+            return None
+        
+        task_lower = task.lower().strip()
+        
+        # First, try exact command matches
+        for breakdown in successful_breakdowns:
+            command = breakdown.get("command", "").lower().strip()
+            if command == task_lower:
+                self._debug_print(f"Found exact command match in successful breakdowns: {command}")
+                return breakdown.get("task_breakdown")
+        
+        # Then, try partial command matches
+        for breakdown in successful_breakdowns:
+            command = breakdown.get("command", "").lower().strip()
+            if task_lower in command or command in task_lower:
+                self._debug_print(f"Found partial command match in successful breakdowns: {command}")
+                return breakdown.get("task_breakdown")
+        
+        # Finally, try semantic similarity (simple keyword matching)
+        task_words = set(task_lower.split())
+        best_match = None
+        best_score = 0
+        
+        for breakdown in successful_breakdowns:
+            command = breakdown.get("command", "").lower().strip()
+            command_words = set(command.split())
+            
+            # Calculate simple word overlap score
+            overlap = len(task_words.intersection(command_words))
+            if overlap > best_score:
+                best_score = overlap
+                best_match = breakdown
+        
+        if best_match and best_score >= 2:  # Require at least 2 words to match
+            self._debug_print(f"Found semantic match in successful breakdowns with score {best_score}: {best_match.get('command')}")
+            return best_match.get("task_breakdown")
+        
+        return None
+    
+    def _search_command_history(self, task: str) -> Optional[str]:
+        """Search through command history for a matching command."""
+        try:
+            from termagent.input_handler import CommandHistory
+            
+            # Create a temporary command history instance to search
+            history = CommandHistory()
+            matches = history.search_history(task)
+            
+            if matches:
+                # Return the most recent match
+                best_match = matches[-1]
+                self._debug_print(f"Found command in history: {best_match}")
+                return best_match
+            
+        except Exception as e:
+            self._debug_print(f"Error searching command history: {e}")
+        
+        return None
+    
     def _create_task_breakdown_state(self, state: Dict[str, Any], task: str, breakdown: List[Dict[str, str]]) -> Dict[str, Any]:
         """Create state with task breakdown information."""
         messages = state.get("messages", [])
@@ -400,7 +479,7 @@ Breakdown: [
             breakdown_text += f"🎯 This task will be completed in {len(breakdown)} steps:\n\n"
         
         for step_info in breakdown:
-            breakdown_text += f"Step {step_info['step']}: {step_info['description']}\n"
+            breakdown_text += f"[{step_info['step']}] -- {step_info['description']}\n"
             breakdown_text += f"  Agent: {step_info['agent']}\n"
             breakdown_text += f"  Command: {step_info['command']}\n\n"
         
@@ -411,7 +490,7 @@ Breakdown: [
         if self.debug:
             self._debug_print(f"📋 Task Breakdown for: {task}")
             for step_info in breakdown:
-                self._debug_print(f"  Step {step_info['step']}: {step_info['description']}")
+                self._debug_print(f"  [{step_info['step']}] -- {step_info['description']}")
                 self._debug_print(f"    Agent: {step_info['agent']}")
                 self._debug_print(f"    Command: {step_info['command']}")
             self._debug_print(f"Total steps: {len(breakdown)}")

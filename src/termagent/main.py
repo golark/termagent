@@ -151,6 +151,7 @@ def main():
     
     # Interactive mode
     print("Enter commands (or 'quit' to exit):")
+    print("Special commands: 'history' (h), 'breakdowns' (bd)")
     print("-" * 30)
     
     # Create input handler with command history
@@ -167,10 +168,23 @@ def main():
             if not command:
                 continue
             
-            # Handle quit command
+            # Handle special commands
             if command.lower() in ['quit', 'exit', 'q']:
                 print("👋 Goodbye!")
                 break
+            elif command.lower() in ['history', 'h']:
+                # Show command history
+                print("📚 Command History:")
+                history = input_handler.history.get_history()
+                for i, cmd in enumerate(history[-10:], 1):  # Show last 10 commands
+                    print(f"  {i}. {cmd}")
+                print()
+                continue
+            elif command.lower() in ['breakdowns', 'bd']:
+                # Show saved task breakdowns
+                from termagent import display_saved_task_breakdowns
+                display_saved_task_breakdowns()
+                continue
 
 
             

@@ -28,6 +28,89 @@ class AgentState(TypedDict):
     no_confirm: bool | None
     # Working directory tracking
     current_working_directory: str | None
+    # Task breakdown history for successful executions
+    successful_task_breakdowns: List[Dict[str, Any]] | None
+
+
+def save_successful_task_breakdowns(breakdowns: List[Dict[str, Any]], file_path: str = None) -> bool:
+    """Save successful task breakdowns to a JSON file for persistence."""
+    try:
+        import json
+        import os
+        from pathlib import Path
+        
+        if file_path is None:
+            # Default to ~/.termagent/task_breakdowns.json
+            history_dir = Path.home() / ".termagent"
+            history_dir.mkdir(exist_ok=True)
+            file_path = str(history_dir / "task_breakdowns.json")
+        
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        with open(file_path, 'w') as f:
+            json.dump(breakdowns, f, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"❌ Error saving task breakdowns: {e}")
+        return False
+
+
+def load_successful_task_breakdowns(file_path: str = None) -> List[Dict[str, Any]]:
+    """Load successful task breakdowns from a JSON file."""
+    try:
+        import json
+        from pathlib import Path
+        
+        if file_path is None:
+            # Default to ~/.termagent/task_breakdowns.json
+            history_dir = Path.home() / ".termagent"
+            file_path = str(history_dir / "task_breakdowns.json")
+        
+        if not os.path.exists(file_path):
+            return []
+        
+        with open(file_path, 'r') as f:
+            breakdowns = json.load(f)
+        
+        return breakdowns
+    except Exception as e:
+        print(f"❌ Error loading task breakdowns: {e}")
+        return []
+
+
+def display_saved_task_breakdowns(file_path: str = None) -> None:
+    """Display all saved successful task breakdowns."""
+    breakdowns = load_successful_task_breakdowns(file_path)
+    
+    if not breakdowns:
+        print("📋 No saved task breakdowns found.")
+        return
+    
+    print(f"📋 Found {len(breakdowns)} saved successful task breakdowns:\n")
+    
+    for i, breakdown in enumerate(breakdowns, 1):
+        command = breakdown.get("command", "unknown")
+        timestamp = breakdown.get("timestamp", "unknown")
+        working_dir = breakdown.get("working_directory", "unknown")
+        task_steps = breakdown.get("task_breakdown", [])
+        
+        print(f"{i}. Command: {command}")
+        print(f"   📅 Timestamp: {timestamp}")
+        print(f"   📁 Working Directory: {working_dir}")
+        print(f"   📝 Steps: {len(task_steps)}")
+        
+        for step in task_steps:
+            step_num = step.get("step", "?")
+            description = step.get("description", "No description")
+            agent = step.get("agent", "unknown")
+            command = step.get("command", "No command")
+            print(f"      Step {step_num}: {description}")
+            print(f"         Agent: {agent}")
+            print(f"         Command: {command}")
+        
+        print()
 
 
 def create_agent_graph(debug: bool = False, no_confirm: bool = False) -> StateGraph:
@@ -954,13 +1037,30 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     messages.append(AIMessage(content=completion_message))
     
     # Mark task breakdown as complete
+    # Save successful task breakdowns for future reference
+    successful_task_breakdowns = state.get("successful_task_breakdowns", [])
+    if failure_count == 0:
+        # Save successful task breakdown with the original command
+        original_command = state.get("last_command", "unknown")
+        successful_breakdown = {
+            "command": original_command,
+            "task_breakdown": task_breakdown,
+            "timestamp": __import__("datetime").datetime.now().isoformat(),
+            "working_directory": state.get("current_working_directory", "unknown")
+        }
+        successful_task_breakdowns.append(successful_breakdown)
+        
+        # Save to disk for persistence
+        save_successful_task_breakdowns(successful_task_breakdowns)
+    
     return {
         **state,
         "messages": messages,
         "routed_to": "shell_command",
         "task_breakdown": None,
         "current_step": None,
-        "total_steps": None
+        "total_steps": None,
+        "successful_task_breakdowns": successful_task_breakdowns
     }
 
 
@@ -968,10 +1068,13 @@ def process_command(command: str, graph, debug: bool = False, no_confirm: bool =
     """Process a command through the agent graph."""
     # Create initial state
     import os
+    # Load existing successful task breakdowns
+    existing_breakdowns = load_successful_task_breakdowns()
+    
     initial_state = AgentState(
         messages=[HumanMessage(content=command)],
         routed_to=None,
-        last_command=None,
+        last_command=command,
         error=None,
         task_breakdown=None,
         current_step=None,
@@ -980,7 +1083,8 @@ def process_command(command: str, graph, debug: bool = False, no_confirm: bool =
         query_type=None,
         debug=debug,
         no_confirm=no_confirm,
-        current_working_directory=os.getcwd()
+        current_working_directory=os.getcwd(),
+        successful_task_breakdowns=existing_breakdowns
     )
     
     # Run the graph with config
@@ -993,10 +1097,13 @@ def process_command(command: str, graph, debug: bool = False, no_confirm: bool =
 def process_command_with_cwd(command: str, graph, current_working_directory: str, debug: bool = False, no_confirm: bool = False) -> Dict[str, Any]:
     """Process a command through the agent graph with a specific working directory."""
     # Create initial state with the provided working directory
+    # Load existing successful task breakdowns
+    existing_breakdowns = load_successful_task_breakdowns()
+    
     initial_state = AgentState(
         messages=[HumanMessage(content=command)],
         routed_to=None,
-        last_command=None,
+        last_command=command,
         error=None,
         task_breakdown=None,
         current_step=None,
@@ -1005,7 +1112,8 @@ def process_command_with_cwd(command: str, graph, current_working_directory: str
         query_type=None,
         debug=debug,
         no_confirm=no_confirm,
-        current_working_directory=current_working_directory
+        current_working_directory=current_working_directory,
+        successful_task_breakdowns=existing_breakdowns
     )
     
     # Run the graph with config
