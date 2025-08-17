@@ -185,8 +185,6 @@ def main():
                 from termagent import display_saved_task_breakdowns
                 display_saved_task_breakdowns()
                 continue
-
-
             
             # Process the command with current working directory
             if args.debug:

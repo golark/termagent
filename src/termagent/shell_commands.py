@@ -159,7 +159,7 @@ class ShellCommandDetector:
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
         if self.debug:
-            print(f"🔍 {message}")
+            print(f"shell_commands | {message}")
     
     def is_known_command(self, command: str) -> bool:
         """Check if the command is a known shell command."""

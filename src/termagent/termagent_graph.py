@@ -32,6 +32,12 @@ class AgentState(TypedDict):
     successful_task_breakdowns: List[Dict[str, Any]] | None
 
 
+def _debug_print(message: str, debug: bool = False):
+    """Print debug message if debug mode is enabled."""
+    if debug:
+        print(f"termagent | {message}")
+
+
 def save_successful_task_breakdowns(breakdowns: List[Dict[str, Any]], file_path: str = None) -> bool:
     """Save successful task breakdowns to a JSON file for persistence."""
     try:
@@ -822,7 +828,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     current_step = state.get("current_step", 0)
     total_steps = state.get("total_steps", 0)
 
-    print('handle task breakdown')
 
     if not task_breakdown or current_step >= total_steps:
         messages.append(AIMessage(content="✅ Task breakdown completed or no steps remaining."))
@@ -881,8 +886,7 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                         messages.append(AIMessage(content=result))
                         continue  # Skip to next step
                 
-                if state.get("debug", False):
-                    print(f"🔍 Step {step_num} - Executing command: {command}")
+                _debug_print(f"🔍 Step {step_num} - Executing command: {command}", state.get("debug", False))
                 
                 # Execute all commands using shell=True for consistent behavior
                 process_result = subprocess.run(
@@ -893,8 +897,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                     text=True,
                     timeout=30
                 )
-
-                print('process_result:', process_result)
 
                 if process_result.returncode == 0:
                     result = f"✅ Command executed: {command}"
@@ -967,7 +969,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         results.append(f"Step {step_num}: {result}")
         messages.append(AIMessage(content=result))
     
-    print('completed task breakdown')
 
     # Add completion message with success/failure summary
     success_count = len([r for r in results if "✅" in r])
@@ -1042,8 +1043,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         
         # Save to disk for persistence
         save_successful_task_breakdowns(successful_task_breakdowns)
-    
-    print('returning from task breakdown')
     
     return {
         **state,
@@ -1122,8 +1121,7 @@ def _get_llm_alternative_for_failed_step(step_num: int, description: str, comman
         base_agent = BaseAgent("failure_recovery", debug=debug)
         
         if base_agent._initialize_llm("gpt-4o"):
-            if debug:
-                print("failure_recovery | 🧠 Using GPT-4o for step failure recovery")
+            _debug_print("failure_recovery | 🧠 Using GPT-4o for step failure recovery", debug)
             
             system_prompt = """You are an expert at troubleshooting failed shell commands and suggesting alternatives. Given a failed step, provide a better approach.
 
@@ -1173,14 +1171,12 @@ Suggest an alternative command or approach:"""
                 if alternative.startswith('Alternative: '):
                     alternative = alternative[13:].strip()
                 
-                if debug:
-                    print(f"failure_recovery | Suggested alternative: {alternative}")
+                _debug_print(f"failure_recovery | Suggested alternative: {alternative}", debug)
                 
                 return alternative
             
     except Exception as e:
-        if debug:
-            print(f"failure_recovery | Error getting LLM alternative: {e}")
+        _debug_print(f"failure_recovery | Error getting LLM alternative: {e}", debug)
     
     return ""
 
@@ -1192,8 +1188,7 @@ def _get_llm_timeout_alternative(step_num: int, description: str, command: str, 
         base_agent = BaseAgent("timeout_recovery", debug=debug)
         
         if base_agent._initialize_llm("gpt-4o"):
-            if debug:
-                print("timeout_recovery | 🧠 Using GPT-4o for timeout recovery")
+            _debug_print("timeout_recovery | 🧠 Using GPT-4o for timeout recovery", debug)
             
             system_prompt = """You are an expert at handling command timeouts and suggesting faster alternatives. Given a timed-out step, provide a more efficient approach.
 
@@ -1238,14 +1233,12 @@ Suggest a faster alternative command:"""
                 if alternative.startswith('Alternative: '):
                     alternative = alternative[13:].strip()
                 
-                if debug:
-                    print(f"timeout_recovery | Suggested timeout alternative: {alternative}")
+                _debug_print(f"timeout_recovery | Suggested timeout alternative: {alternative}", debug)
                 
                 return alternative
             
     except Exception as e:
-        if debug:
-            print(f"timeout_recovery | Error getting LLM timeout alternative: {e}")
+        _debug_print(f"timeout_recovery | Error getting LLM timeout alternative: {e}", debug)
     
     return ""
 
@@ -1257,8 +1250,7 @@ def _get_llm_error_alternative(step_num: int, description: str, command: str, er
         base_agent = BaseAgent("error_recovery", debug=debug)
         
         if base_agent._initialize_llm("gpt-4o"):
-            if debug:
-                print("error_recovery | 🧠 Using GPT-4o for execution error recovery")
+            _debug_print("error_recovery | 🧠 Using GPT-4o for execution error recovery", debug)
             
             system_prompt = """You are an expert at handling command execution errors and suggesting alternatives. Given a failed step, provide a better approach.
 
@@ -1304,14 +1296,12 @@ Suggest an alternative command:"""
                 if alternative.startswith('Alternative: '):
                     alternative = alternative[13:].strip()
                 
-                if debug:
-                    print(f"error_recovery | Suggested error alternative: {alternative}")
+                _debug_print(f"error_recovery | Suggested error alternative: {alternative}", debug)
                 
                 return alternative
             
     except Exception as e:
-        if debug:
-            print(f"error_recovery | Error getting LLM error alternative: {e}")
+        _debug_print(f"error_recovery | Error getting LLM error alternative: {e}", debug)
     
     return ""
 
@@ -1323,8 +1313,7 @@ def _get_llm_recovery_suggestions(failed_steps: list, task_breakdown: list, debu
         base_agent = BaseAgent("recovery_advisor", debug=debug)
         
         if base_agent._initialize_llm("gpt-4o"):
-            if debug:
-                print("recovery_advisor | 🧠 Using GPT-4o for overall recovery suggestions")
+            _debug_print("recovery_advisor | 🧠 Using GPT-4o for overall recovery suggestions", debug)
             
             system_prompt = """You are an expert at analyzing failed task breakdowns and providing recovery strategies. Given a list of failed steps, suggest overall recovery approaches.
 
@@ -1370,14 +1359,12 @@ Provide overall recovery suggestions and alternative approaches:"""
             response = base_agent.llm.invoke(llm_messages)
             suggestions = response.content.strip()
             
-            if debug:
-                print(f"recovery_advisor | Generated recovery suggestions")
+            _debug_print(f"recovery_advisor | Generated recovery suggestions", debug)
             
             return suggestions
             
     except Exception as e:
-        if debug:
-            print(f"recovery_advisor | Error getting LLM recovery suggestions: {e}")
+        _debug_print(f"recovery_advisor | Error getting LLM recovery suggestions: {e}", debug)
     
     return ""
 
