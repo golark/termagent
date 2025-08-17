@@ -886,12 +886,10 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
         step_info = task_breakdown[i]
         step_num = step_info["step"]
         description = step_info["description"]
-        agent = step_info["agent"]
         command = step_info["command"]  # Use the command field, not description
         
         # Create step execution message
         step_message = f"🚀 Executing Step {step_num}: {description}\n"
-        step_message += f"   Agent: {agent}\n"
         step_message += f"   Command: {command}\n"
         step_message += f"   Progress: {i + 1}/{total_steps}"
         

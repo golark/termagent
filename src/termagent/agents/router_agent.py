@@ -7,126 +7,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
 from termagent.shell_commands import ShellCommandDetector
 from termagent.directory_context import get_directory_context, get_relevant_files_context
-from termagent.task_complexity import TaskComplexityAnalyzer
 
-
-class QueryDetector:
-    """Detects if user input is a question/informational query."""
-    
-    # Question indicators
-    QUESTION_WORDS = {
-        'what', 'how', 'why', 'when', 'where', 'which', 'who', 'whose', 'whom',
-        'can', 'could', 'would', 'should', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were'
-    }
-    
-    # Complex query indicators that suggest GPT-4o usage
-    COMPLEX_QUERY_INDICATORS = {
-        'how to', 'what is the best way', 'why does', 'when should',
-        'which approach', 'compare', 'difference between', 'similarities',
-        'pros and cons', 'advantages', 'disadvantages', 'trade-offs',
-        'best practices', 'recommendations', 'suggestions', 'alternatives',
-        'considerations', 'implications', 'consequences', 'impact',
-        'evaluation', 'assessment', 'review', 'analysis of',
-        'what would happen if', 'suppose that', 'imagine if',
-        'under what circumstances', 'in what situations',
-        'how would you', 'what would you recommend',
-        'explain why', 'describe how', 'analyze the'
-    }
-    
-    # Question patterns
-    QUESTION_PATTERNS = [
-        r'\?$',  # Ends with question mark
-        r'^(what|how|why|when|where|which|who|whose|whom)\s+',  # Starts with question word
-        r'\s+(what|how|why|when|where|which|who|whose|whom)\s+',  # Contains question word
-        r'^(can|could|would|should|will|do|does|did|is|are|was|were)\s+',  # Starts with modal/auxiliary
-        r'\s+(can|could|would|should|will|do|does|did|is|are|was|were)\s+',  # Contains modal/auxiliary
-    ]
-    
-    # Complex query patterns
-    COMPLEX_QUERY_PATTERNS = [
-        r'\b(how to|what is the best way|why does|when should)\b',
-        r'\b(which approach|compare|difference between|similarities)\b',
-        r'\b(pros and cons|advantages|disadvantages|trade.?offs)\b',
-        r'\b(best practices|recommendations|suggestions|alternatives)\b',
-        r'\b(considerations|implications|consequences|impact)\b',
-        r'\b(evaluation|assessment|review|analysis of)\b',
-        r'\b(what would happen if|suppose that|imagine if)\b',
-        r'\b(under what circumstances|in what situations)\b',
-        r'\b(how would you|what would you recommend)\b',
-        r'\b(explain why|describe how|analyze the)\b'
-    ]
-    
-    def __init__(self, debug: bool = False):
-        self.debug = debug
-    
-    def _debug_print(self, message: str):
-        """Print debug message if debug mode is enabled."""
-        if self.debug:
-            print(f"query_detector | {message}")
-    
-    def is_question(self, text: str) -> bool:
-        """Detect if the input is a question/informational query."""
-        if not text or not text.strip():
-            return False
-        
-        text_lower = text.lower().strip()
-        
-        # Check for question mark
-        if text.strip().endswith('?'):
-            self._debug_print(f"Detected question mark in: {text}")
-            return True
-        
-        # Check for question words at start
-        words = text_lower.split()
-        if words and words[0] in self.QUESTION_WORDS:
-            self._debug_print(f"Detected question word at start: {words[0]}")
-            return True
-        
-        # Check for question patterns
-        for pattern in self.QUESTION_PATTERNS:
-            if re.search(pattern, text_lower):
-                self._debug_print(f"Detected question pattern: {pattern}")
-                return True
-        
-        # Check for question words anywhere in the text
-        for word in self.QUESTION_WORDS:
-            if f' {word} ' in f' {text_lower} ':
-                self._debug_print(f"Detected question word: {word}")
-                return True
-        
-        return False
-    
-    def is_complex_query(self, text: str) -> bool:
-        """Detect if the query is complex and would benefit from GPT-4o analysis."""
-        if not text or not text.strip():
-            return False
-        
-        text_lower = text.lower().strip()
-        
-        # Check for complex query indicators
-        for indicator in self.COMPLEX_QUERY_INDICATORS:
-            if indicator in text_lower:
-                self._debug_print(f"Detected complex query indicator: {indicator}")
-                return True
-        
-        # Check for complex query patterns
-        for pattern in self.COMPLEX_QUERY_PATTERNS:
-            if re.search(pattern, text_lower):
-                self._debug_print(f"Detected complex query pattern: {pattern}")
-                return True
-        
-        # Check for long, descriptive queries (more than 10 words often indicates complexity)
-        if len(text.split()) > 10:
-            self._debug_print(f"Detected long query ({len(text.split())} words), likely complex")
-            return True
-        
-        return False
-    
-    def get_query_type(self, text: str) -> str:
-        """All queries are shell queries."""
-        return 'shell_query'
-
-
+   
 class RouterAgent(BaseAgent):
     """Router agent that breaks down tasks into steps."""
     
@@ -134,8 +16,6 @@ class RouterAgent(BaseAgent):
         super().__init__("router_agent", debug, no_confirm)
         
         self.shell_detector = ShellCommandDetector(debug=debug, no_confirm=no_confirm)
-        self.query_detector = QueryDetector(debug=debug)
-        self.complexity_analyzer = TaskComplexityAnalyzer(debug=debug)
         
         self._initialize_llm()
     
@@ -173,28 +53,17 @@ class RouterAgent(BaseAgent):
         if self.shell_detector.is_shell_command(task):
             self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
-        
-        # step 2 - check if this is a question/informational query
-        if self.query_detector.is_question(task):
-            # Check if this is a complex query that would benefit from GPT-4o
-            is_complex = self.query_detector.is_complex_query(task)
-            
-            if is_complex:
-                self._debug_print(f"Routing to query handler - complex query detected")
-            else:
-                self._debug_print(f"Routing to query handler - simple query")
-            return self._create_query_state(state, task, is_complex)
-        
-        # step 3 - Check if we have a successful task breakdown in history
+       
+        # step 2 - Check if we have a successful task breakdown in history
         successful_breakdowns = state.get("successful_task_breakdowns", [])
         if successful_breakdowns:
             self._debug_print(f"Checking {len(successful_breakdowns)} successful task breakdowns in history")
-            historical_breakdown = self._search_successful_task_breakdowns(task, successful_breakdowns)
+            historical_breakdown = self._search_task_breakdown_cache(task, successful_breakdowns)
             if historical_breakdown:
                 self._debug_print(f"Found matching task breakdown in history, reusing it")
                 return self._create_task_breakdown_state(state, task, historical_breakdown)
        
-        # Step 4 - Use LLM for intelligent task breakdown
+        # Step 3 - Use LLM for intelligent task breakdown
         breakdown = self._llm_task_breakdown(task)
         if breakdown:
             self._debug_print(f"LLM breakdown successful, routing to task breakdown")
@@ -203,20 +72,8 @@ class RouterAgent(BaseAgent):
             self._debug_print(f"LLM breakdown failed, falling back to direct execution")
             return self._create_direct_execution_state(state, task)
     
+
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
-        """Use LLM to intelligently break down a task into steps."""
-        
-        # Analyze task complexity to determine the appropriate LLM model
-        complexity_analysis = self.complexity_analyzer.analyze_complexity(task)
-        recommended_model = complexity_analysis['recommended_model']
-        
-        self._debug_print(f"Task complexity analysis: {complexity_analysis['complexity_score']} score, {complexity_analysis['reasoning_score']} reasoning, using model: {recommended_model}")
-        
-        # Reinitialize LLM with the recommended model if different from current
-        if not self.llm or getattr(self.llm, 'model_name', '') != recommended_model:
-            self._debug_print(f"🔄 Switching LLM model to {recommended_model}")
-            self._initialize_llm(recommended_model)
-       
         # Get directory context for the LLM
         try:
             current_dir = os.getcwd()
@@ -232,18 +89,8 @@ class RouterAgent(BaseAgent):
         except Exception as e:
             context_info = f"⚠️  Could not get directory context: {e}\n\n"
         
-        # Customize system prompt based on complexity
-        if recommended_model == "gpt-4o":
-            complexity_note = """
-IMPORTANT: This is a complex task requiring advanced reasoning. Use GPT-4o's enhanced capabilities to:
-- Provide detailed, thoughtful analysis
-- Consider multiple approaches and edge cases
-- Break down complex logic into clear, actionable steps
-- Consider performance, security, and maintainability implications
-- Provide explanations for why certain approaches are chosen
-"""
-        else:
-            complexity_note = """
+        # Use simple complexity note for 3.5
+        complexity_note = """
 This is a straightforward task. Provide a simple, direct breakdown focusing on efficiency.
 """
         
@@ -339,15 +186,14 @@ Breakdown: [
             self._debug_print(f"LLM breakdown failed: {e}")
             return []
     
-    def _search_successful_task_breakdowns(self, task: str, successful_breakdowns: List[Dict[str, Any]]) -> Optional[List[Dict[str, str]]]:
-        """Search through successful task breakdowns for a matching command."""
-        if not successful_breakdowns:
+    def _search_task_breakdown_cache(self, task: str, cache: List[Dict[str, Any]]) -> Optional[List[Dict[str, str]]]:
+        if not cache:
             return None
         
         task_lower = task.lower().strip()
         
         # First, try exact command matches
-        for breakdown in successful_breakdowns:
+        for breakdown in cache:
             command = breakdown.get("command", "").lower().strip()
             if command == task_lower:
                 self._debug_print(f"Found exact command match in successful breakdowns: {command}")
@@ -370,7 +216,6 @@ Breakdown: [
         
         for step_info in breakdown:
             breakdown_text += f"[{step_info['step']}] -- {step_info['description']}\n"
-            breakdown_text += f"  Agent: {step_info['agent']}\n"
             breakdown_text += f"  Command: {step_info['command']}\n\n"
         
         breakdown_text += "🔄 Starting execution..."
@@ -381,7 +226,6 @@ Breakdown: [
             self._debug_print(f"📋 Task Breakdown for: {task}")
             for step_info in breakdown:
                 self._debug_print(f"  [{step_info['step']}] -- {step_info['description']}")
-                self._debug_print(f"    Agent: {step_info['agent']}")
                 self._debug_print(f"    Command: {step_info['command']}")
             self._debug_print(f"Total steps: {len(breakdown)}")
         
@@ -413,56 +257,7 @@ Breakdown: [
             "last_command": task
         }
 
-    def _create_query_state(self, state: Dict[str, Any], query: str, is_complex: bool) -> Dict[str, Any]:
-        """Create state for handling informational queries."""
-        messages = state.get("messages", [])
-        
-        # Analyze query complexity to determine if GPT-4o should be used
-        complexity_analysis = self.complexity_analyzer.analyze_complexity(query)
-        
-        # Use both the query detector's complexity assessment and the complexity analyzer
-        # If either indicates complexity, use GPT-4o
-        should_use_gpt4o = is_complex or complexity_analysis['requires_complex_reasoning']
-        recommended_model = complexity_analysis['recommended_model']
-        
-        # Override recommended model if complex query is detected
-        if should_use_gpt4o:
-            recommended_model = "gpt-4o"
-        
-        # Create message indicating query handling with model information
-        query_text = f"🔍 Query detected: {query}\n"
-        query_text += f"🧠 Complexity: {complexity_analysis['complexity_score']} score\n"
-        
-        if should_use_gpt4o:
-            query_text += f"🧠 Using GPT-4o for complex reasoning\n"
-            query_text += "This query requires advanced analysis and step-by-step guidance..."
-        else:
-            query_text += f"⚡ Using GPT-3.5-turbo for simple analysis\n"
-            query_text += "This query will be handled efficiently..."
-        
-        query_text += "\nRouting to appropriate agent for information gathering..."
-        messages.append(AIMessage(content=query_text))
-        
-        self._debug_print(f"Created query state for: {query}")
-        if should_use_gpt4o:
-            self._debug_print(f"🧠 Query requires GPT-4o for complex reasoning")
-        else:
-            self._debug_print(f"⚡ Query can use GPT-3.5-turbo for simple analysis")
-        
-        # All queries go to the query handler for GPT-4o analysis
-        routed_to = "handle_query"
-        
-        # Add to state with complexity information
-        return {
-            **state,
-            "messages": messages,
-            "routed_to": routed_to,
-            "last_command": query,
-            "is_query": True,
-            "query_complexity": complexity_analysis,
-            "should_use_gpt4o": should_use_gpt4o,
-            "is_complex_query": is_complex
-        }
+
     
 
 
