@@ -57,7 +57,6 @@ class RouterAgent(BaseAgent):
         # step 2 - Check if we have a successful task breakdown in history
         successful_breakdowns = state.get("successful_task_breakdowns", [])
         if successful_breakdowns:
-            self._debug_print(f"Checking {len(successful_breakdowns)} successful task breakdowns in history")
             historical_breakdown = self._search_task_breakdown_cache(task, successful_breakdowns)
             if historical_breakdown:
                 self._debug_print(f"Found matching task breakdown in history, reusing it")
@@ -66,12 +65,12 @@ class RouterAgent(BaseAgent):
         # Step 3 - Use LLM for intelligent task breakdown
         breakdown = self._llm_task_breakdown(task)
         if breakdown:
-            self._debug_print(f"LLM breakdown successful, routing to task breakdown")
             return self._create_task_breakdown_state(state, task, breakdown)
-        else:
-            self._debug_print(f"LLM breakdown failed, falling back to direct execution")
-            return self._create_direct_execution_state(state, task)
-    
+
+        self._debug_print("Unable to handle this command. No breakdown or direct execution available.")
+        messages = state.get("messages", [])
+        messages.append(AIMessage(content="❌ Sorry, I cannot handle this command."))
+        return {**state, "messages": messages}
 
     def _llm_task_breakdown(self, task: str) -> List[Dict[str, str]]:
         # Get directory context for the LLM
