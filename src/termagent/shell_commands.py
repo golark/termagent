@@ -290,7 +290,6 @@ class ShellCommandDetector:
     
     def _load_aliases(self):
         """Load shell aliases from configuration files and shell."""
-        self._debug_print("Loading shell aliases...")
         
         # Try to get aliases from the current shell
         try:
@@ -313,7 +312,6 @@ class ShellCommandDetector:
         self._load_aliases_from_files()
         
         self._aliases_loaded = True
-        self._debug_print(f"Loaded {len(self._aliases_cache)} aliases")
     
     def _parse_alias_output(self, alias_output: str):
         """Parse the output of the 'alias' command."""

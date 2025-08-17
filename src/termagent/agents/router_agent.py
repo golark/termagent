@@ -88,16 +88,10 @@ class RouterAgent(BaseAgent):
         except Exception as e:
             context_info = f"⚠️  Could not get directory context: {e}\n\n"
         
-        # Use simple complexity note for 3.5
-        complexity_note = """
-This is a straightforward task. Provide a simple, direct breakdown focusing on efficiency.
-"""
         
         system_prompt = f"""You are a task analysis expert. Given a task or a query, break it down into the MINIMAL number of logical steps. 
 
 {context_info}
-
-{complexity_note}
 
 CRITICAL RULES:
 1. Use the FEWEST possible steps to accomplish the task
@@ -125,7 +119,6 @@ Breakdown: [
     "command": "docker stop nginxx"
   }}
 ]
-
 Task: "create a new git branch called feature-x"
 Breakdown: [
   {{
@@ -134,7 +127,6 @@ Breakdown: [
     "command": "git checkout -b feature-x"
   }}
 ]
-
 Task: "check how many python files are in this directory"
 Breakdown: [
   {{
