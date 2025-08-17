@@ -1046,13 +1046,30 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
     if failure_count == 0:
         # Save successful task breakdown with the original command
         original_command = state.get("last_command", "unknown")
-        successful_breakdown = {
-            "command": original_command,
-            "task_breakdown": task_breakdown,
-            "timestamp": __import__("datetime").datetime.now().isoformat(),
-            "working_directory": state.get("current_working_directory", "unknown")
-        }
-        successful_task_breakdowns.append(successful_breakdown)
+        
+        # Check if this command already exists in successful breakdowns
+        existing_breakdown = None
+        for breakdown in successful_task_breakdowns:
+            if breakdown.get("command", "").lower().strip() == original_command.lower().strip():
+                existing_breakdown = breakdown
+                break
+        
+        if existing_breakdown:
+            # Update the existing breakdown with the new timestamp
+            existing_breakdown["task_breakdown"] = task_breakdown
+            existing_breakdown["timestamp"] = __import__("datetime").datetime.now().isoformat()
+            existing_breakdown["working_directory"] = state.get("current_working_directory", "unknown")
+            print(f"✅ Updated existing successful task breakdown for: {original_command}")
+        else:
+            # Add new breakdown
+            successful_breakdown = {
+                "command": original_command,
+                "task_breakdown": task_breakdown,
+                "timestamp": __import__("datetime").datetime.now().isoformat(),
+                "working_directory": state.get("current_working_directory", "unknown")
+            }
+            successful_task_breakdowns.append(successful_breakdown)
+            print(f"✅ Added new successful task breakdown for: {original_command}")
         
         # Save to disk for persistence
         save_successful_task_breakdowns(successful_task_breakdowns)
