@@ -198,10 +198,10 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     
     # Import the shell command detector from its own module
     import os
-    from termagent.shell_commands import ShellCommandDetector
+    from termagent.shell_commands import ShellCommandHandler
     
     # Create detector instance
-    detector = ShellCommandDetector(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+    detector = ShellCommandHandler(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
     
     # Shell commands execute directly without confirmation
     
@@ -273,8 +273,8 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
             
             try:
                 # Import and create ShellCommandDetector
-                from termagent.shell_commands import ShellCommandDetector
-                detector = ShellCommandDetector(
+                from termagent.shell_commands import ShellCommandHandler
+                detector = ShellCommandHandler(
                     debug=state.get("debug", False), 
                     no_confirm=state.get("no_confirm", False)
                 )
@@ -436,7 +436,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
             existing_breakdown["task_breakdown"] = task_breakdown
             existing_breakdown["timestamp"] = __import__("datetime").datetime.now().isoformat()
             existing_breakdown["working_directory"] = state.get("current_working_directory", "unknown")
-            print(f"✅ Updated existing successful task breakdown for: {original_command}")
         else:
             # Add new breakdown
             successful_breakdown = {
@@ -446,7 +445,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 "working_directory": state.get("current_working_directory", "unknown")
             }
             successful_task_breakdowns.append(successful_breakdown)
-            print(f"✅ Added new successful task breakdown for: {original_command}")
         
         # Save to disk for persistence
         save_successful_task_breakdowns(successful_task_breakdowns)

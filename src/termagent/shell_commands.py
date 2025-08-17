@@ -11,10 +11,10 @@ import re
 from typing import Tuple, Optional, List, Dict
 
 
-class ShellCommandDetector:
+class ShellCommandHandler:
     """Detects and executes known shell commands directly."""
     
-    BASIC_COMMANDS = {'ls', 'll', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo', 'which'}
+    BASIC_COMMANDS = {'ls', 'll', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo', 'which', 'ps'}
     NAVIGATION_COMMANDS = {'cd'}
     COMMAND_PATTERNS = [
         r'^which\s+\w+$',                    # which <executable>
@@ -51,6 +51,10 @@ class ShellCommandDetector:
         r'^dnf\s+\w+\s+\w+$',                # dnf <command> <package>
         r'^yum\s+\w+$',                      # yum <command>
         r'^yum\s+\w+\s+\w+$',                # yum <command> <package>
+        
+        # Docker commands
+        r'^docker\s+.*$',                     # any docker command
+        r'^podman\s+.*$',                     # any podman command
     ]
     EDITORS = {'vi', 'vim', 'emacs', 'nano'}
     INTERACTIVE_COMMANDS = {

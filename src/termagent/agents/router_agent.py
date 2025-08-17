@@ -5,7 +5,7 @@ import os
 from typing import Dict, Any, List, Tuple, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from termagent.agents.base_agent import BaseAgent
-from termagent.shell_commands import ShellCommandDetector
+from termagent.shell_commands import ShellCommandHandler
 from termagent.directory_context import get_directory_context, get_relevant_files_context
 
    
@@ -15,7 +15,7 @@ class RouterAgent(BaseAgent):
     def __init__(self, debug: bool = False, no_confirm: bool = False, llm_model: str = "gpt-3.5-turbo"):
         super().__init__("router_agent", debug, no_confirm)
         
-        self.shell_detector = ShellCommandDetector(debug=debug, no_confirm=no_confirm)
+        self.shell_detector = ShellCommandHandler(debug=debug, no_confirm=no_confirm)
         
         self._initialize_llm(llm_model)
     
