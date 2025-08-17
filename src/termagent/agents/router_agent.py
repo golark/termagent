@@ -123,39 +123,8 @@ class QueryDetector:
         return False
     
     def get_query_type(self, text: str) -> str:
-        """Determine the type of query to help with routing."""
-        text_lower = text.lower()
-        
-        # Check if this is a simple status query that should be handled directly
-        simple_status_indicators = [
-            'is', 'are', 'running', 'stopped', 'active', 'available', 'installed',
-            'status', 'running', 'up', 'down', 'healthy', 'ready', 'connected'
-        ]
-        
-        # Simple status queries like "is docker running?" should go to shell handler
-        if any(indicator in text_lower for indicator in simple_status_indicators):
-            # Check if it's a simple yes/no status question
-            if len(text.split()) <= 5 and any(word in text_lower for word in ['is', 'are']):
-                return 'shell_query'
-        
-        # Check if this is an analysis query that doesn't need shell commands
-        analysis_indicators = [
-            'how would you recommend', 'what are the pros and cons', 'analyze', 'compare',
-            'what would happen if', 'explain why', 'describe how', 'recommend',
-            'suggest', 'best practices', 'alternatives', 'considerations',
-            'evaluate', 'assess', 'review', 'optimize', 'performance',
-            'security', 'scalability', 'architecture', 'refactor'
-        ]
-        
-        # If it's an analysis query, route to general query handler for multi-step guidance
-        if any(indicator in text_lower for indicator in analysis_indicators):
-            return 'general_query'
-        
-        # File, system, and git queries - route to shell handler
-        if any(word in text_lower for word in ['file', 'directory', 'folder', 'path', 'size', 'python', 'count', 'list', 'show', 'container', 'image', 'docker', 'volume', 'network', 'process', 'memory', 'cpu', 'disk', 'system', 'status', 'git', 'commit', 'branch', 'remote', 'repository', 'permissions', 'attributes', 'owner', 'group']):
-            return 'shell_query'
-        
-        return 'general_query'
+        """All queries are shell queries."""
+        return 'shell_query'
 
 
 class RouterAgent(BaseAgent):
@@ -205,28 +174,27 @@ class RouterAgent(BaseAgent):
         return state
     
     def _break_down_task(self, state: Dict[str, Any], task: str) -> Dict[str, Any]:
-        """Break down a task into steps and determine appropriate agents."""
-        
-        # First, check if this is a question/informational query
-        if self.query_detector.is_question(task):
-            query_type = self.query_detector.get_query_type(task)
-            
-            # Check if this is a complex query that would benefit from GPT-4o
-            is_complex = self.query_detector.is_complex_query(task)
-            
-            if is_complex:
-                self._debug_print(f"Routing to query handler - complex query detected (type: {query_type})")
-            else:
-                self._debug_print(f"Routing to query handler - simple query (type: {query_type})")
-            
-            return self._create_query_state(state, task, query_type, is_complex)
-        
-        # Step 1 - Check if this is a known shell command that should be executed directly
+
+        # step 1 - Check if this is a known shell command that should be executed directly
         if self.shell_detector.should_execute_directly(task):
             self._debug_print(f"Routing to direct shell execution")
             return self._create_direct_execution_state(state, task)
         
-        # Step 2 - Check if we have a successful task breakdown in history
+        
+        # step 2 - check if this is a question/informational query
+        if self.query_detector.is_question(task):
+            # Check if this is a complex query that would benefit from GPT-4o
+            is_complex = self.query_detector.is_complex_query(task)
+            
+            if is_complex:
+                self._debug_print(f"Routing to query handler - complex query detected")
+            else:
+                self._debug_print(f"Routing to query handler - simple query")
+            
+            return self._create_query_state(state, task, is_complex)
+        
+       
+        # step 3 - Check if we have a successful task breakdown in history
         successful_breakdowns = state.get("successful_task_breakdowns", [])
         if successful_breakdowns:
             self._debug_print(f"Checking {len(successful_breakdowns)} successful task breakdowns in history")
@@ -235,7 +203,7 @@ class RouterAgent(BaseAgent):
                 self._debug_print(f"Found matching task breakdown in history, reusing it")
                 return self._create_task_breakdown_state(state, task, historical_breakdown)
        
-        # Step 3 - Use LLM for intelligent task breakdown
+        # Step 4 - Use LLM for intelligent task breakdown
         breakdown = self._llm_task_breakdown(task)
         if breakdown:
             self._debug_print(f"LLM breakdown successful, routing to task breakdown")
@@ -481,7 +449,7 @@ Breakdown: [
             "last_command": task
         }
 
-    def _create_query_state(self, state: Dict[str, Any], query: str, query_type: str, is_complex: bool) -> Dict[str, Any]:
+    def _create_query_state(self, state: Dict[str, Any], query: str, is_complex: bool) -> Dict[str, Any]:
         """Create state for handling informational queries."""
         messages = state.get("messages", [])
         
@@ -499,7 +467,6 @@ Breakdown: [
         
         # Create message indicating query handling with model information
         query_text = f"🔍 Query detected: {query}\n"
-        query_text += f"📋 Type: {query_type}\n"
         query_text += f"🧠 Complexity: {complexity_analysis['complexity_score']} score\n"
         
         if should_use_gpt4o:
@@ -512,17 +479,14 @@ Breakdown: [
         query_text += "\nRouting to appropriate agent for information gathering..."
         messages.append(AIMessage(content=query_text))
         
-        self._debug_print(f"Created query state for: {query} (type: {query_type})")
+        self._debug_print(f"Created query state for: {query}")
         if should_use_gpt4o:
             self._debug_print(f"🧠 Query requires GPT-4o for complex reasoning")
         else:
             self._debug_print(f"⚡ Query can use GPT-3.5-turbo for simple analysis")
         
-        # Route to appropriate agent based on query type
-        if query_type == 'shell_query':
-            routed_to = "handle_shell"
-        else:
-            routed_to = "handle_query"
+        # All queries go to the query handler for GPT-4o analysis
+        routed_to = "handle_query"
         
         # Add to state with complexity information
         return {
@@ -531,7 +495,6 @@ Breakdown: [
             "routed_to": routed_to,
             "last_command": query,
             "is_query": True,
-            "query_type": query_type,
             "query_complexity": complexity_analysis,
             "should_use_gpt4o": should_use_gpt4o,
             "is_complex_query": is_complex

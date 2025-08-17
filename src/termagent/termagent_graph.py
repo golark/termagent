@@ -22,7 +22,6 @@ class AgentState(TypedDict):
     total_steps: int | None
     # Query handling fields
     is_query: bool | None
-    query_type: str | None
     # Configuration fields
     debug: bool | None
     no_confirm: bool | None
@@ -169,13 +168,8 @@ def route_decision(state: AgentState) -> str:
     
     # Check if this is a query that needs special handling
     if state.get("is_query"):
-        query_type = state.get("query_type", "general_query")
-        
-        # Route queries to appropriate agents
-        if query_type == 'shell_query':
-            return "handle_shell"
-        else:
-            return "handle_query"
+        # All queries go to the query handler
+        return "handle_query"
     
     # Regular routing logic
     if state.get("routed_to") == "shell_command":
@@ -195,11 +189,10 @@ def handle_shell_command(state: AgentState) -> AgentState:
     # Get the last command
     last_command = state.get("last_command", "Unknown command")
     is_query = state.get("is_query", False)
-    query_type = state.get("query_type", "")
     
-    if is_query and query_type == "shell_query":
-        # This is a file-related query, handle it intelligently
-        return _handle_shell_query(state, last_command)
+    if is_query:
+        # This is a query, route to query handler
+        return "handle_query"
     else:
         # Regular shell command
         messages.append(AIMessage(
@@ -684,11 +677,10 @@ def handle_query(state: AgentState) -> AgentState:
     """Handle general queries using GPT-4o to determine multiple steps to answer them."""
     messages = state.get("messages", [])
     query = state.get("last_command", "Unknown query")
-    query_type = state.get("query_type", "general_query")
+
     
     # Create initial response indicating we're using GPT-4o for analysis
-    response = f"🔍 Query: {query}\n"
-    response += f"📋 Type: {query_type}\n\n"
+    response = f"🔍 Query: {query}\n\n"
     response += "🧠 Using GPT-4o to analyze this query and provide a step-by-step approach..."
     messages.append(AIMessage(content=response))
     
@@ -764,8 +756,7 @@ IMPORTANT: Every step must include a shell command that can be executed immediat
             
             # Create comprehensive response with multi-step guidance
             analysis_response = f"🧠 GPT-4o Multi-Step Analysis Complete!\n\n"
-            analysis_response += f"📋 Query: {query}\n"
-            analysis_response += f"🔍 Type: {query_type}\n\n"
+            analysis_response += f"📋 Query: {query}\n\n"
             analysis_response += f"📋 Multi-Step Approach:\n{analysis_content}\n\n"
             analysis_response += "🚀 Now executing each step automatically...\n"
             
@@ -824,7 +815,7 @@ IMPORTANT: Every step must include a shell command that can be executed immediat
                 # Create final summary
                 final_summary = f"🎯 Query Execution Complete!\n\n"
                 final_summary += f"📋 Query: {query}\n"
-                final_summary += f"🔍 Type: {query_type}\n"
+
                 final_summary += f"📊 Steps executed: {len(steps)}\n\n"
                 final_summary += "📋 Execution Results:\n"
                 for i, result in enumerate(execution_results, 1):
@@ -840,8 +831,7 @@ IMPORTANT: Every step must include a shell command that can be executed immediat
         else:
             # Fallback if GPT-4o is not available
             fallback_response = f"⚠️ GPT-4o not available for multi-step query analysis\n\n"
-            fallback_response += f"🔍 Query: {query}\n"
-            fallback_response += f"📋 Type: {query_type}\n\n"
+            fallback_response += f"🔍 Query: {query}\n\n"
             fallback_response += "This query doesn't fit into a specific agent category. "
             fallback_response += "You can try rephrasing it as a more specific question or command.\n\n"
             fallback_response += "Examples:\n"
@@ -855,8 +845,7 @@ IMPORTANT: Every step must include a shell command that can be executed immediat
     except Exception as e:
         # Error handling
         error_response = f"❌ Error during GPT-4o multi-step query analysis: {str(e)}\n\n"
-        error_response += f"🔍 Query: {query}\n"
-        error_response += f"📋 Type: {query_type}\n\n"
+        error_response += f"🔍 Query: {query}\n\n"
         error_response += "This query doesn't fit into a specific agent category. "
         error_response += "You can try rephrasing it as a more specific question or command.\n\n"
         error_response += "Examples:\n"
@@ -1122,7 +1111,6 @@ def process_command(command: str, graph, debug: bool = False, no_confirm: bool =
         current_step=None,
         total_steps=None,
         is_query=None,
-        query_type=None,
         debug=debug,
         no_confirm=no_confirm,
         current_working_directory=os.getcwd(),
@@ -1151,7 +1139,6 @@ def process_command_with_cwd(command: str, graph, current_working_directory: str
         current_step=None,
         total_steps=None,
         is_query=None,
-        query_type=None,
         debug=debug,
         no_confirm=no_confirm,
         current_working_directory=current_working_directory,
