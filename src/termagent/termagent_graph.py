@@ -918,12 +918,14 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                         if response in ['n', 'no', 'cancel', 'skip']:
                             result = f"❌ Step {step_num} cancelled: {command}"
                             messages.append(AIMessage(content=result))
-                            continue  # Skip to next step
+                            # When step is cancelled, break out of the loop and return to main prompt
+                            break
                     except KeyboardInterrupt:
                         print("\n❌ Step cancelled")
                         result = f"❌ Step {step_num} cancelled: {command}"
                         messages.append(AIMessage(content=result))
-                        continue  # Skip to next step
+                        # When step is cancelled, break out of the loop and return to main prompt
+                        break
                 
                 _debug_print(f"🔍 Step {step_num} - Executing command: {command}", state.get("debug", False))
                 
@@ -1006,6 +1008,21 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 })
         
         results.append(f"Step {step_num}: {result}")
+        
+        # Check if the step was cancelled (loop was broken)
+        if "cancelled" in result:
+            # Task breakdown was cancelled, return to main prompt
+            cancellation_message = f"🔄 Task breakdown cancelled at step {step_num}. Returning to main prompt."
+            messages.append(AIMessage(content=cancellation_message))
+            
+            return {
+                **state,
+                "messages": messages,
+                "routed_to": "shell_command",
+                "task_breakdown": None,
+                "current_step": None,
+                "total_steps": None
+            }
     
 
     # Add completion message with success/failure summary
