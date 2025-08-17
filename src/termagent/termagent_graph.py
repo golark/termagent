@@ -967,7 +967,6 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 })
         
         results.append(f"Step {step_num}: {result}")
-        messages.append(AIMessage(content=result))
     
 
     # Add completion message with success/failure summary

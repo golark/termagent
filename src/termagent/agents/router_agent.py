@@ -62,7 +62,7 @@ class QueryDetector:
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
         if self.debug:
-            print(f"router | {message}")
+            print(f"query_detector | {message}")
     
     def is_question(self, text: str) -> bool:
         """Detect if the input is a question/informational query."""

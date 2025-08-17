@@ -6,6 +6,7 @@ TermAgent - A LangGraph-based agent system with router and git agent via MCP.
 import sys
 import os
 import argparse
+from pprint import pprint
 from .termagent_graph import create_agent_graph, process_command, process_command_with_cwd
 from .input_handler import create_input_handler
 
@@ -149,16 +150,15 @@ def main():
             print("-" * 30)
             sys.exit(1)
     
-    # Interactive mode
-    print("Enter commands (or 'quit' to exit):")
-    print("Special commands: 'history' (h), 'breakdowns' (bd)")
-    print("-" * 30)
     
     # Create input handler with command history
     input_handler = create_input_handler(debug=args.debug)
     
     # Track working directory across commands
     current_working_directory = os.getcwd()
+    
+    # Initialize result for state tracking
+    result = None
     
     while True:
         try:
@@ -184,6 +184,19 @@ def main():
                 # Show saved task breakdowns
                 from termagent import display_saved_task_breakdowns
                 display_saved_task_breakdowns()
+                continue
+            elif command.lower() in ['state', 's']:
+                # Show current agent state
+                if result is not None:
+                    messages = result.get('messages', [])
+                    if messages:
+                        pprint(messages)
+
+                else:
+                    print("📝 No commands executed yet")
+                    print(f"🛡️ Debug Mode: {args.debug}")
+                    print(f"⏭️  No-Confirm Mode: {args.no_confirm}")
+                print("-" * 30)
                 continue
             
             # Process the command with current working directory
