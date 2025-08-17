@@ -3,7 +3,6 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import os
 from termagent.task_complexity import TaskComplexityAnalyzer
 
-
 # Try to import LLM components
 try:
     from langchain_openai import ChatOpenAI
@@ -47,9 +46,6 @@ class BaseAgent:
             self._debug_print("⚠️ LLM not available - using fallback parsing")
             return False
 
-
-
-    
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError("Subclasses must implement this method")
     

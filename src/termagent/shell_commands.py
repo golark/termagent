@@ -8,7 +8,7 @@ import os
 import subprocess
 import shlex
 import re
-from typing import Tuple, Optional, List, Dict
+from typing import Tuple, Optional, Dict
 
 
 class ShellCommandHandler:

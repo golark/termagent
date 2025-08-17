@@ -8,7 +8,6 @@ from termagent.agents.base_agent import BaseAgent
 from termagent.shell_commands import ShellCommandHandler
 from termagent.directory_context import get_directory_context, get_relevant_files_context
 
-   
 class RouterAgent(BaseAgent):
     """Router agent that breaks down tasks into steps."""
     
@@ -87,8 +86,6 @@ class RouterAgent(BaseAgent):
         except Exception as e:
             context_info = f"⚠️  Could not get directory context: {e}\n\n"
 
-        
-        
         system_prompt = f"""You are a task analysis expert. Your job is to break down a given task into the absolute MINIMAL number of logical steps.
 
 {context_info}
@@ -197,7 +194,7 @@ Breakdown: [
                 return breakdown.get("task_breakdown")
                
         return None
-   
+
     def _create_task_breakdown_state(self, state: Dict[str, Any], task: str, breakdown: List[Dict[str, str]]) -> Dict[str, Any]:
         """Create state with task breakdown information."""
         messages = state.get("messages", [])
@@ -253,9 +250,3 @@ Breakdown: [
             "routed_to": "handle_direct_execution",
             "last_command": task
         }
-
-
-    
-
-
-
