@@ -196,34 +196,34 @@ def handle_direct_execution(state: AgentState) -> AgentState:
     messages = state.get("messages", [])
     last_command = state.get("last_command", "Unknown command")
     
-    # Import the shell command detector from its own module
+    # Import the shell tool
     import os
-    from termagent.shell_commands import ShellCommandHandler
+    from termagent.agents.shell_tool import ShellTool
     
-    # Create detector instance
-    detector = ShellCommandHandler(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
+    # Create shell tool instance
+    shell_tool = ShellTool(debug=state.get("debug", False), no_confirm=state.get("no_confirm", False))
     
     # Shell commands execute directly without confirmation
     
     # Execute the command
     current_cwd = state.get("current_working_directory", os.getcwd())
-    success, output, return_code, new_cwd = detector.execute_command(last_command, current_cwd)
+    result = shell_tool.execute(last_command, current_cwd)
     
-    if success:
-        result_message = f"✅"
-        if output:
-            result_message += f"\n{output}"
+    if result["success"]:
+        result_message = f"✅ Command executed successfully"
+        if result["output"]:
+            result_message += f"\n{result['output']}"
     else:
         result_message = f"❌ Command execution failed: {last_command}\n"
-        if output:
-            result_message += f"Error: {output}"
+        if result["error"]:
+            result_message += f"Error: {result['error']}"
     
     messages.append(AIMessage(content=result_message))
     
     return {
         **state,
         "messages": messages,
-        "current_working_directory": new_cwd
+        "current_working_directory": result["working_directory"]
     }
 
 
@@ -272,9 +272,9 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 messages.append(AIMessage(content=retry_message))
             
             try:
-                # Import and create ShellCommandDetector
-                from termagent.shell_commands import ShellCommandHandler
-                detector = ShellCommandHandler(
+                # Import and create ShellTool
+                from termagent.agents.shell_tool import ShellTool
+                shell_tool = ShellTool(
                     debug=state.get("debug", False), 
                     no_confirm=state.get("no_confirm", False)
                 )
@@ -299,24 +299,24 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                 
                 _debug_print(f"🔍 Step {step_num} - Executing command: {command}", state.get("debug", False))
                 
-                # Execute command using ShellCommandDetector
+                # Execute command using ShellTool
                 current_cwd = state.get("current_working_directory", os.getcwd())
-                success, output, return_code, new_cwd = detector.execute_command(command, current_cwd)
+                command_result = shell_tool.execute(command, current_cwd)
                 
                 # Update working directory if it changed
-                if new_cwd and new_cwd != current_cwd:
-                    state["current_working_directory"] = new_cwd
+                if command_result["working_directory"] and command_result["working_directory"] != current_cwd:
+                    state["current_working_directory"] = command_result["working_directory"]
 
-                if success:
+                if command_result["success"]:
                     result = f"✅ Command executed: {command}"
-                    if output and output != "✅ Command executed successfully":
-                        result += f"\nOutput: {output}"
+                    if command_result["output"] and command_result["output"] != "✅ Command executed successfully":
+                        result += f"\nOutput: {command_result['output']}"
                     step_success = True
                 else:
                     # Command failed - ask LLM for alternatives/fixes
                     if step_attempts == 1: # Only ask LLM on first failure
                         alternative_command = _get_llm_alternative_for_failed_step(
-                            step_num, description, command, output, 
+                            step_num, description, command, command_result["error"], 
                             state.get("debug", False)
                         )
                         
@@ -331,8 +331,8 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                             messages.append(AIMessage(content=alt_message))
                     
                     result = f"❌ Command failed: {command}"
-                    if output:
-                        result += f"\nError: {output}"
+                    if command_result["error"]:
+                        result += f"\nError: {command_result['error']}"
                         
             except Exception as e:
                 result = f"❌ Command execution error: {command}\nError: {str(e)}"
