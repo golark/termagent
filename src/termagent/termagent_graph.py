@@ -182,7 +182,7 @@ def handle_shell_command(state: AgentState) -> AgentState:
 
     # Regular shell command
     messages.append(AIMessage(
-        content=f"Handled shell command: {last_command}. This command was not a git command."
+        content=f"Handled shell command: {last_command}"
     ))
     
     return {

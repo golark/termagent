@@ -212,7 +212,6 @@ Breakdown: [
             breakdown_text += f"[{step_info['step']}] -- {step_info['description']}\n"
             breakdown_text += f"  Command: {step_info['command']}\n\n"
         
-        breakdown_text += "🔄 Starting execution..."
         messages.append(AIMessage(content=breakdown_text))
         
         # Debug output: Print task steps

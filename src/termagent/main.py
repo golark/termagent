@@ -11,6 +11,56 @@ from .termagent_graph import create_agent_graph, process_command, process_comman
 from .input_handler import create_input_handler
 
 
+def display_agent_state(result, debug: bool, no_confirm: bool):
+    """Display the current agent state in a readable format."""
+    if result is not None:
+        # Display task breakdown information if available
+        task_breakdown = result.get('task_breakdown')
+        current_step = result.get('current_step')
+        total_steps = result.get('total_steps')
+        routed_to = result.get('routed_to')
+        
+        if task_breakdown:
+            print("📋 Task Breakdown Information:")
+            print("-" * 40)
+            print(f"🎯 Total Steps: {total_steps}")
+            print(f"📍 Current Step: {current_step}")
+            print(f"🔄 Routed To: {routed_to}")
+            print()
+            print("📝 Task Steps:")
+            for step_info in task_breakdown:
+                step_num = step_info.get('step', '?')
+                description = step_info.get('description', 'No description')
+                command = step_info.get('command', 'No command')
+                print(f"  [{step_num}] {description}")
+                print(f"     Command: {command}")
+            print("-" * 40)
+            print()
+        
+        # Display messages
+        messages = result.get('messages', [])
+        if messages:
+            print("📋 Current Agent State Messages:")
+            print("-" * 40)
+            for i, msg in enumerate(messages, 1):
+                msg_type = msg.__class__.__name__
+                if msg_type == 'HumanMessage':
+                    print(msg.pretty_repr())
+                elif msg_type == 'AIMessage':
+                    print(msg.pretty_repr())
+                else:
+                    print(f"📝 {i}. {msg_type}:")
+                    print(f"   Content: {getattr(msg, 'content', str(msg))}")
+                print()
+        else:
+            print("📝 No messages in current state")
+    else:
+        print("📝 No commands executed yet")
+        print(f"🛡️ Debug Mode: {debug}")
+        print(f"⏭️  No-Confirm Mode: {no_confirm}")
+    print("-" * 30)
+
+
 def main():
     """Main entry point for the TermAgent application."""
     # Parse command line arguments
@@ -187,16 +237,7 @@ def main():
                 continue
             elif command.lower() in ['state', 's']:
                 # Show current agent state
-                if result is not None:
-                    messages = result.get('messages', [])
-                    if messages:
-                        pprint(messages)
-
-                else:
-                    print("📝 No commands executed yet")
-                    print(f"🛡️ Debug Mode: {args.debug}")
-                    print(f"⏭️  No-Confirm Mode: {args.no_confirm}")
-                print("-" * 30)
+                display_agent_state(result, args.debug, args.no_confirm)
                 continue
             
             # Process the command with current working directory
