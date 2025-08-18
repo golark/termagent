@@ -16,8 +16,13 @@ class ShellCommandHandler:
     
     BASIC_COMMANDS = {'ls', 'll', 'pwd', 'mkdir', 'rm', 'cp', 'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc', 'echo', 'which', 'ps'}
     NAVIGATION_COMMANDS = {'cd'}
+    SOURCE_COMMANDS = {'source', '.'}
     COMMAND_PATTERNS = [
         r'^which\s+\w+$',                    # which <executable>
+        r'^source\s+\S+$',                   # source <file>
+        r'^source\s+\S+\s+\S+$',             # source <file> <args>
+        r'^\.\s+\S+$',                       # . <file> (alternative to source)
+        r'^\.\s+\S+\s+\S+$',                 # . <file> <args>
         r'^git\s+\w+$',                      # git <subcommand>
         r'^git\s+\w+\s+\w+$',                # git <subcommand> <argument>
         r'^git\s+\w+\s+\w+\s+\w+$',          # git <subcommand> <arg1> <arg2>
@@ -86,7 +91,8 @@ class ShellCommandHandler:
         if (base in self.BASIC_COMMANDS or 
             base in self.EDITORS or 
             base in self.INTERACTIVE_COMMANDS or 
-            base in self.NAVIGATION_COMMANDS):
+            base in self.NAVIGATION_COMMANDS or
+            base in self.SOURCE_COMMANDS):
             self._debug_print(f'{command} is a shell command (base match)')
             return True
 
@@ -113,6 +119,16 @@ class ShellCommandHandler:
                 # Show the new working directory after successful cd
                 message += f"\n{self.show_current_directory(new_cwd)}"
                 return True, message, 0, new_cwd
+            else:
+                return False, message, 1, cwd
+        
+        # Check if this is a source command
+        is_source = self.is_source_command(command)
+        if is_source:
+            # Handle source command specially - it can modify environment
+            success, message, _ = self.handle_source_command(command, cwd)
+            if success:
+                return True, message, 0, cwd
             else:
                 return False, message, 1, cwd
         
@@ -207,6 +223,18 @@ class ShellCommandHandler:
         
         base_command = parts[0].lower()
         return base_command in self.NAVIGATION_COMMANDS
+    
+    def is_source_command(self, command: str) -> bool:
+        """Check if a command is a source command (source or .)."""
+        if not command or not command.strip():
+            return False
+        
+        parts = shlex.split(command.strip())
+        if not parts:
+            return False
+        
+        base_command = parts[0].lower()
+        return base_command in self.SOURCE_COMMANDS
 
     def change_directory(self, command: str, current_cwd: str) -> Tuple[bool, str, str]:
         """Handle cd command and return new working directory."""
@@ -261,6 +289,220 @@ class ShellCommandHandler:
         
         self._debug_print(f"cd: changing from {current_cwd} to {new_cwd}")
         return True, f"✅ Changed directory to: {new_cwd}", new_cwd
+    
+    def handle_source_command(self, command: str, current_cwd: str) -> Tuple[bool, str, str]:
+        """Handle source command and return updated environment info."""
+        self._debug_print(f"handle_source_command called with command: '{command}', current_cwd: '{current_cwd}'")
+        
+        if not self.is_source_command(command):
+            self._debug_print(f"command '{command}' is not a source command")
+            return False, "Not a source command", current_cwd
+        
+        parts = shlex.split(command.strip())
+        if len(parts) < 2:
+            return False, "❌ Source command requires a file argument", current_cwd
+        
+        source_file = parts[1]
+        
+        # Handle special cases
+        if source_file.startswith("~"):
+            source_file = os.path.expanduser(source_file)
+        
+        # Resolve relative paths
+        if not os.path.isabs(source_file):
+            source_file = os.path.join(current_cwd, source_file)
+        
+        # Normalize the path
+        source_file = os.path.normpath(source_file)
+        
+        # Check if file exists
+        if not os.path.exists(source_file):
+            return False, f"❌ Source file does not exist: {source_file}", current_cwd
+        
+        # Check if we have permission to read
+        if not os.access(source_file, os.R_OK):
+            return False, f"❌ Permission denied reading file: {source_file}", current_cwd
+        
+        try:
+            # Read the source file to analyze its contents
+            with open(source_file, 'r') as f:
+                content = f.read()
+            
+            # Analyze what the source file does
+            analysis = self._analyze_source_file(content, source_file)
+            
+            # For virtual environments, try to detect and activate them
+            if self._is_virtual_environment_file(source_file, content):
+                venv_info = self._activate_virtual_environment(source_file, current_cwd)
+                if venv_info:
+                    return True, f"✅ Virtual environment activated: {venv_info}\n\n{analysis}", current_cwd
+            
+            # For regular source files, show what they would do
+            return True, f"✅ Source file analyzed: {source_file}\n\n{analysis}", current_cwd
+            
+        except Exception as e:
+            return False, f"❌ Error reading source file: {str(e)}", current_cwd
+    
+    def _analyze_source_file(self, content: str, file_path: str) -> str:
+        """Analyze the contents of a source file to understand what it does."""
+        analysis = []
+        
+        # Look for common patterns in source files
+        lines = content.split('\n')
+        
+        # Check for virtual environment activation
+        if any('VIRTUAL_ENV' in line or 'venv' in line or 'activate' in line for line in lines):
+            analysis.append("• Appears to be a virtual environment activation script")
+        
+        # Check for environment variable exports
+        export_lines = [line for line in lines if line.strip().startswith('export ')]
+        if export_lines:
+            analysis.append(f"• Exports {len(export_lines)} environment variables")
+            # Show a few examples
+            for line in export_lines[:3]:
+                var_name = line.split('=')[0].replace('export ', '').strip()
+                analysis.append(f"  - {var_name}")
+            if len(export_lines) > 3:
+                analysis.append(f"  - ... and {len(export_lines) - 3} more")
+        
+        # Check for alias definitions
+        alias_lines = [line for line in lines if line.strip().startswith('alias ')]
+        if alias_lines:
+            analysis.append(f"• Defines {len(alias_lines)} aliases")
+        
+        # Check for function definitions
+        function_lines = [line for line in lines if line.strip().startswith('function ') or '()' in line]
+        if function_lines:
+            analysis.append(f"• Defines {len(function_lines)} functions")
+        
+        # Check for PATH modifications
+        path_lines = [line for line in lines if 'PATH=' in line]
+        if path_lines:
+            analysis.append("• Modifies PATH environment variable")
+        
+        # Check for other common environment variables
+        env_vars = ['HOME', 'USER', 'SHELL', 'LANG', 'LC_ALL', 'PWD', 'OLDPWD']
+        for var in env_vars:
+            if any(f'{var}=' in line for line in lines):
+                analysis.append(f"• Modifies {var} environment variable")
+        
+        # Check for script execution
+        if any('exec' in line or 'eval' in line for line in lines):
+            analysis.append("• Contains script execution commands")
+        
+        # Check for conditional logic
+        if any(line.strip().startswith(('if', 'elif', 'else', 'fi', 'case', 'esac')) for line in lines):
+            analysis.append("• Contains conditional logic")
+        
+        # Check for loops
+        if any(line.strip().startswith(('for', 'while', 'until', 'done')) for line in lines):
+            analysis.append("• Contains loop constructs")
+        
+        if not analysis:
+            analysis.append("• File contents analyzed but no clear patterns detected")
+        
+        return "\n".join(analysis)
+    
+    def _is_virtual_environment_file(self, file_path: str, content: str) -> bool:
+        """Check if a source file is a virtual environment activation script."""
+        # Common patterns for virtual environment activation
+        venv_indicators = [
+            'VIRTUAL_ENV',
+            'venv',
+            'activate',
+            'deactivate',
+            'conda activate',
+            'conda deactivate',
+            'pipenv',
+            'poetry',
+            'virtualenv',
+            'pyenv',
+            'asdf',
+            'rvm',
+            'rbenv',
+            'nvm',
+            'n',
+            'fnm'
+        ]
+        
+        # Check file path
+        file_lower = file_path.lower()
+        if any(indicator in file_lower for indicator in ['activate', 'venv', 'env']):
+            return True
+        
+        # Check content
+        content_lower = content.lower()
+        if any(indicator in content_lower for indicator in venv_indicators):
+            return True
+        
+        return False
+    
+    def _activate_virtual_environment(self, source_file: str, current_cwd: str) -> Optional[str]:
+        """Attempt to activate a virtual environment and return info about it."""
+        try:
+            # Try to detect the type of virtual environment based on content and path
+            file_lower = source_file.lower()
+            content_lower = ""
+            
+            # Try to read the content to analyze it
+            try:
+                with open(source_file, 'r') as f:
+                    content_lower = f.read().lower()
+            except:
+                pass
+            
+            # Check for specific virtual environment types
+            if 'conda' in file_lower or 'conda' in content_lower:
+                return "Conda environment detected"
+            elif 'pipenv' in file_lower or 'pipenv' in content_lower:
+                return "Pipenv environment detected"
+            elif 'poetry' in file_lower or 'poetry' in content_lower:
+                return "Poetry environment detected"
+            elif 'virtualenv' in file_lower or 'virtualenv' in content_lower:
+                return "Virtualenv environment detected"
+            elif 'pyenv' in file_lower or 'pyenv' in content_lower:
+                return "Pyenv environment detected"
+            elif 'venv' in file_lower or 'activate' in file_lower or 'VIRTUAL_ENV' in content_lower:
+                # Standard Python venv
+                venv_dir = os.path.dirname(source_file)
+                
+                # Check for different Python executable locations
+                python_paths = [
+                    os.path.join(venv_dir, 'bin', 'python'),
+                    os.path.join(venv_dir, 'bin', 'python3'),
+                    os.path.join(venv_dir, 'Scripts', 'python.exe'),  # Windows
+                    os.path.join(venv_dir, 'Scripts', 'python3.exe')  # Windows
+                ]
+                
+                python_path = None
+                for path in python_paths:
+                    if os.path.exists(path):
+                        python_path = path
+                        break
+                
+                if python_path:
+                    # Get Python version
+                    result = subprocess.run([python_path, '--version'], 
+                                         capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        version = result.stdout.strip()
+                        return f"Python venv: {version} at {venv_dir}"
+                    else:
+                        return f"Python venv at {venv_dir}"
+                else:
+                    return f"Python venv at {venv_dir}"
+            elif 'nvm' in file_lower or 'nvm' in content_lower:
+                return "Node.js environment (nvm) detected"
+            elif 'rvm' in file_lower or 'rvm' in content_lower:
+                return "Ruby environment (rvm) detected"
+            elif 'rbenv' in file_lower or 'rbenv' in content_lower:
+                return "Ruby environment (rbenv) detected"
+            else:
+                return "Virtual environment (type unknown)"
+                
+        except Exception as e:
+            self._debug_print(f"Error detecting virtual environment: {e}")
+            return None
     
     def show_current_directory(self, cwd: str) -> str:
         """Show the current working directory."""

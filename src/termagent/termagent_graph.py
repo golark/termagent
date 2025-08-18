@@ -311,6 +311,94 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                     result = f"✅ Command executed: {command}"
                     if output and output != "✅ Command executed successfully":
                         result += f"\nOutput: {output}"
+                    
+                    # Use LLM to reflect on the step execution and decide whether to proceed
+                    _debug_print(f"🔍 Step {step_num} - Using LLM reflection to analyze output", state.get("debug", False))
+                    reflection = _reflect_on_step_execution(
+                        step_num, description, command, output, success, 
+                        state.get("debug", False)
+                    )
+                    
+                    # Add reflection message
+                    reflection_message = f"🧠 Step {step_num} Reflection:\n"
+                    reflection_message += f"   Decision: {'✅ Proceed' if reflection['should_proceed'] else '❌ Stop'}\n"
+                    reflection_message += f"   Reasoning: {reflection['reasoning']}\n"
+                    if reflection['adjustments_needed']:
+                        reflection_message += f"   Adjustments: {reflection['adjustments_needed']}\n"
+                    if reflection.get('alternative_commands'):
+                        reflection_message += f"   Alternative Commands:\n"
+                        for alt_cmd in reflection['alternative_commands']:
+                            reflection_message += f"     • {alt_cmd}\n"
+                    reflection_message += f"   Confidence: {reflection['confidence']}"
+                    messages.append(AIMessage(content=reflection_message))
+                    
+                    # Check if we should proceed based on reflection
+                    if not reflection['should_proceed']:
+                        # Check if this was an alternative command that succeeded but didn't achieve the goal
+                        if step_attempts > 1 and reflection.get('alternative_commands'):
+                            # This was an alternative command - try other alternatives we haven't tried yet
+                            tried_alternatives = step_info.get('tried_alternatives', [])
+                            if not tried_alternatives:
+                                tried_alternatives = []
+                            
+                            # Add current command to tried alternatives
+                            if command not in tried_alternatives:
+                                tried_alternatives.append(command)
+                            
+                            # Find untried alternatives
+                            untried_alternatives = [alt for alt in reflection['alternative_commands'] if alt not in tried_alternatives]
+                            
+                            if untried_alternatives:
+                                # Try the next untried alternative
+                                next_alternative = untried_alternatives[0]
+                                _debug_print(f"🔄 Step {step_num} - Alternative succeeded but didn't achieve goal, trying next alternative: {next_alternative}", state.get("debug", False))
+                                
+                                # Update the command for retry
+                                command = next_alternative
+                                step_info["command"] = next_alternative
+                                step_info["tried_alternatives"] = tried_alternatives
+                                task_breakdown[i] = step_info
+                                
+                                alt_message = f"🔄 Alternative command succeeded but didn't achieve goal. Trying next alternative for Step {step_num}:\n"
+                                alt_message += f"   Next alternative: {next_alternative}"
+                                messages.append(AIMessage(content=alt_message))
+                                
+                                # Continue with the retry loop
+                                continue
+                            else:
+                                # All alternatives tried, now try the original command as last resort
+                                original_command = step_info.get('original_command', command)
+                                if original_command != command and original_command not in tried_alternatives:
+                                    _debug_print(f"🔄 Step {step_num} - All alternatives tried, trying original command as last resort: {original_command}", state.get("debug", False))
+                                    
+                                    # Reset to original command
+                                    command = original_command
+                                    step_info["command"] = original_command
+                                    step_info["tried_alternatives"] = tried_alternatives
+                                    task_breakdown[i] = step_info
+                                    
+                                    alt_message = f"🔄 All alternatives tried. Trying original command as last resort for Step {step_num}:\n"
+                                    alt_message += f"   Original command: {original_command}"
+                                    messages.append(AIMessage(content=alt_message))
+                                    
+                                    # Continue with the retry loop
+                                    continue
+                        
+                        # No alternatives or original command retry, stop execution
+                        stop_message = f"🛑 Stopping task breakdown at step {step_num} based on LLM reflection.\n"
+                        stop_message += f"Reason: {reflection['reasoning']}"
+                        messages.append(AIMessage(content=stop_message))
+                        
+                        # Return to main prompt
+                        return {
+                            **state,
+                            "messages": messages,
+                            "routed_to": "shell_command",
+                            "task_breakdown": None,
+                            "current_step": None,
+                            "total_steps": None
+                        }
+                    
                     step_success = True
                 else:
                     # Command failed - ask LLM for alternatives/fixes
@@ -321,6 +409,18 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                         )
                         
                         if alternative_command and alternative_command != command:
+                            # Store the original command before trying alternative
+                            if 'original_command' not in step_info:
+                                step_info["original_command"] = command
+                            
+                            # Initialize tried alternatives tracking
+                            if 'tried_alternatives' not in step_info:
+                                step_info["tried_alternatives"] = []
+                            
+                            # Add current command to tried alternatives
+                            if command not in step_info["tried_alternatives"]:
+                                step_info["tried_alternatives"].append(command)
+                            
                             # Update the command for retry
                             command = alternative_command
                             step_info["command"] = alternative_command
@@ -333,15 +433,166 @@ def handle_task_breakdown(state: AgentState) -> AgentState:
                     result = f"❌ Command failed: {command}"
                     if output:
                         result += f"\nError: {output}"
+                    
+                    # Use LLM to reflect on the failed step execution
+                    _debug_print(f"🔍 Step {step_num} - Using LLM reflection to analyze failed step", state.get("debug", False))
+                    reflection = _reflect_on_step_execution(
+                        step_num, description, command, output, success, 
+                        state.get("debug", False)
+                    )
+                    
+                    # Add reflection message for failed step
+                    reflection_message = f"🧠 Step {step_num} Reflection (Failed):\n"
+                    reflection_message += f"   Decision: {'✅ Proceed' if reflection['should_proceed'] else '❌ Stop'}\n"
+                    reflection_message += f"   Reasoning: {reflection['reasoning']}\n"
+                    if reflection['adjustments_needed']:
+                        reflection_message += f"   Adjustments: {reflection['adjustments_needed']}\n"
+                    if reflection.get('alternative_commands'):
+                        reflection_message += f"   Alternative Commands:\n"
+                        for alt_cmd in reflection['alternative_commands']:
+                            reflection_message += f"   • {alt_cmd}\n"
+                    reflection_message += f"   Confidence: {reflection['confidence']}"
+                    messages.append(AIMessage(content=reflection_message))
+                    
+                    # Check if we should stop based on reflection even for failed steps
+                    if not reflection['should_proceed']:
+                        # Check if we have alternative commands to try
+                        if reflection.get('alternative_commands') and step_attempts < max_attempts:
+                            # Try the first alternative command
+                            alternative_command = reflection['alternative_commands'][0]
+                            _debug_print(f"🔄 Step {step_num} - Trying reflection-suggested alternative: {alternative_command}", state.get("debug", False))
+                            
+                            # Store the original command before trying alternative
+                            if 'original_command' not in step_info:
+                                step_info["original_command"] = command
+                            
+                            # Initialize tried alternatives tracking
+                            if 'tried_alternatives' not in step_info:
+                                step_info["tried_alternatives"] = []
+                            
+                            # Add current command to tried alternatives
+                            if command not in step_info["tried_alternatives"]:
+                                step_info["tried_alternatives"].append(command)
+                            
+                            # Update the command for retry
+                            command = alternative_command
+                            step_info["command"] = alternative_command
+                            task_breakdown[i] = step_info
+                            
+                            alt_message = f"🔄 LLM reflection suggested alternative for Step {step_num}:\n"
+                            alt_message += f"   New command: {alternative_command}"
+                            messages.append(AIMessage(content=alt_message))
+                            
+                            # Continue with the retry loop instead of stopping
+                            continue
+                        else:
+                            # No alternatives or max attempts reached, stop execution
+                            stop_message = f"🛑 Stopping task breakdown at step {step_num} based on LLM reflection of failed step.\n"
+                            stop_message += f"Reason: {reflection['reasoning']}"
+                            if reflection.get('alternative_commands'):
+                                stop_message += f"\n\n💡 Alternative commands were suggested but max attempts reached."
+                            messages.append(AIMessage(content=stop_message))
+                            
+                            # Return to main prompt
+                            return {
+                                **state,
+                                "messages": messages,
+                                "routed_to": "shell_command",
+                                "task_breakdown": None,
+                                "current_step": None,
+                                "total_steps": None
+                            }
                         
             except Exception as e:
                 result = f"❌ Command execution error: {command}\nError: {str(e)}"
+                
+                # Use LLM to reflect on the execution error
+                _debug_print(f"🔍 Step {step_num} - Using LLM reflection to analyze execution error", state.get("debug", False))
+                reflection = _reflect_on_step_execution(
+                    step_num, description, command, f"Execution error: {str(e)}", False, 
+                    state.get("debug", False)
+                )
+                
+                # Add reflection message for execution error
+                reflection_message = f"🧠 Step {step_num} Reflection (Execution Error):\n"
+                reflection_message += f"   Decision: {'✅ Proceed' if reflection['should_proceed'] else '❌ Stop'}\n"
+                reflection_message += f"   Reasoning: {reflection['reasoning']}\n"
+                if reflection['adjustments_needed']:
+                    reflection_message += f"   Adjustments: {reflection['adjustments_needed']}\n"
+                if reflection.get('alternative_commands'):
+                    reflection_message += f"   Alternative Commands:\n"
+                    for alt_cmd in reflection['alternative_commands']:
+                        reflection_message += f"   • {alt_cmd}\n"
+                reflection_message += f"   Confidence: {reflection['confidence']}"
+                messages.append(AIMessage(content=reflection_message))
+                
+                # Check if we should stop based on reflection
+                if not reflection['should_proceed']:
+                    # Check if we have alternative commands to try
+                    if reflection.get('alternative_commands') and step_attempts < max_attempts:
+                        # Try the first alternative command
+                        alternative_command = reflection['alternative_commands'][0]
+                        _debug_print(f"🔍 Step {step_num} - Trying reflection-suggested alternative for execution error: {alternative_command}", state.get("debug", False))
+                        
+                        # Store the original command before trying alternative
+                        if 'original_command' not in step_info:
+                            step_info["original_command"] = command
+                        
+                        # Initialize tried alternatives tracking
+                        if 'tried_alternatives' not in step_info:
+                            step_info["tried_alternatives"] = []
+                        
+                        # Add current command to tried alternatives
+                        if command not in step_info["tried_alternatives"]:
+                            step_info["tried_alternatives"].append(command)
+                        
+                        # Update the command for retry
+                        command = alternative_command
+                        step_info["command"] = alternative_command
+                        task_breakdown[i] = step_info
+                        
+                        alt_message = f"🔄 LLM reflection suggested alternative for Step {step_num} execution error:\n"
+                        alt_message += f"   New command: {alternative_command}"
+                        messages.append(AIMessage(content=alt_message))
+                        
+                        # Continue with the retry loop instead of stopping
+                        continue
+                    else:
+                        # No alternatives or max attempts reached, stop execution
+                        stop_message = f"🛑 Stopping task breakdown at step {step_num} based on LLM reflection of execution error.\n"
+                        stop_message += f"Reason: {reflection['reasoning']}"
+                        if reflection.get('alternative_commands'):
+                            stop_message += f"\n\n💡 Alternative commands were suggested but max attempts reached."
+                        messages.append(AIMessage(content=stop_message))
+                        
+                        # Return to main prompt
+                        return {
+                            **state,
+                            "messages": messages,
+                            "routed_to": "shell_command",
+                            "task_breakdown": None,
+                            "current_step": None,
+                            "total_steps": None
+                        }
+                
                 # Ask LLM for error alternatives
                 if step_attempts == 1:
                     error_alternative = _get_llm_error_alternative(
                         step_num, description, command, str(e), state.get("debug", False)
                     )
                     if error_alternative and error_alternative != command:
+                        # Store the original command before trying alternative
+                        if 'original_command' not in step_info:
+                            step_info["original_command"] = command
+                        
+                        # Initialize tried alternatives tracking
+                        if 'tried_alternatives' not in step_info:
+                            step_info["tried_alternatives"] = []
+                        
+                        # Add current command to tried alternatives
+                        if command not in step_info["tried_alternatives"]:
+                            step_info["tried_alternatives"].append(command)
+                        
                         command = error_alternative
                         step_info["command"] = error_alternative
                         task_breakdown[i] = step_info
@@ -708,6 +959,103 @@ Provide overall recovery suggestions and alternative approaches:"""
         _debug_print(f"recovery_advisor | Error getting LLM recovery suggestions: {e}", debug)
     
     return ""
+
+
+def _reflect_on_step_execution(step_num: int, description: str, command: str, output: str, success: bool, debug: bool = False) -> Dict[str, Any]:
+    """Use LLM to reflect on the output of a shell execution and decide whether to proceed."""
+    try:
+        from termagent.agents.base_agent import BaseAgent
+        base_agent = BaseAgent("step_reflection", debug=debug)
+        
+        if base_agent._initialize_llm("gpt-4o"):
+            _debug_print(f"step_reflection | 🧠 Using GPT-4o for step {step_num} reflection", debug)
+            
+            system_prompt = """You are an expert at analyzing shell command execution results and deciding whether to proceed with the next step.
+
+Your task is to:
+1. Analyze the command output and execution result
+2. Determine if the step was successful
+3. Decide whether to proceed to the next step
+4. Provide reasoning for your decision
+5. Suggest any necessary adjustments or alternative approaches
+
+IMPORTANT:
+- Return a JSON response with the following structure:
+{
+  "should_proceed": true/false,
+  "reasoning": "explanation of your decision",
+  "adjustments_needed": "any suggested changes or fixes",
+  "alternative_commands": ["command1", "command2"],
+  "confidence": "high/medium/low"
+}
+
+- Consider error messages, exit codes, and unexpected output
+- Be conservative - if there's uncertainty, recommend stopping
+- Focus on whether the step achieved its intended goal
+- ALWAYS suggest alternative commands when execution fails
+- Provide specific, actionable alternatives that could resolve the issue
+- Only suggest stopping if alternatives are unlikely to work or would be dangerous
+- Prefer suggesting alternatives over stopping when there are reasonable solutions"""
+
+            user_message = f"""Step {step_num}: {description}
+Command: {command}
+Success: {success}
+Output: {output}
+
+Analyze this step execution and decide whether to proceed.
+
+IMPORTANT: If the step failed (Success: False), you MUST suggest alternative commands that could resolve the issue. These should be specific, actionable commands that address the root cause of the failure."""
+
+            llm_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = base_agent.llm.invoke(llm_messages)
+            reflection_content = response.content.strip()
+            
+            # Try to extract JSON from the response
+            import json
+            import re
+            
+            # Look for JSON content between ```json and ``` markers
+            json_match = re.search(r'```json\s*(.*?)\s*```', reflection_content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # Try to find JSON object in the content
+                json_match = re.search(r'\{.*\}', reflection_content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                else:
+                    # Fallback to parsing the entire content
+                    json_str = reflection_content
+            
+            try:
+                reflection = json.loads(json_str)
+                _debug_print(f"step_reflection | Step {step_num} reflection successful", debug)
+                return reflection
+            except json.JSONDecodeError:
+                _debug_print(f"step_reflection | Failed to parse JSON for step {step_num}, using fallback", debug)
+                # Fallback response
+                return {
+                    "should_proceed": success,  # Default to proceeding if successful
+                    "reasoning": "LLM reflection failed, defaulting to success-based decision",
+                    "adjustments_needed": "",
+                    "alternative_commands": [],
+                    "confidence": "low"
+                }
+            
+    except Exception as e:
+        _debug_print(f"step_reflection | Error getting LLM reflection for step {step_num}: {e}", debug)
+        # Fallback response
+        return {
+            "should_proceed": success,  # Default to proceeding if successful
+            "reasoning": "Reflection failed due to error, defaulting to success-based decision",
+            "adjustments_needed": "",
+            "alternative_commands": [],
+            "confidence": "low"
+        }
 
 
 if __name__ == "__main__":

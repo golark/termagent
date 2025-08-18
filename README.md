@@ -11,6 +11,7 @@ A LangGraph-based agent system with intelligent routing, MCP (Model Context Prot
 - 💬 **Interactive Interface**: Command-line interface for easy interaction
 - 🎤 **Voice Input**: Accept voice commands using Vosk speech recognition
 - 📚 **Command History**: Navigate and search through command history
+- 🧠 **LLM Reflection**: Intelligent analysis after each shell execution during task breakdown
 
 ## Architecture
 
@@ -18,11 +19,29 @@ A LangGraph-based agent system with intelligent routing, MCP (Model Context Prot
 TermAgent
 ├── Router Agent (Main)
 │   ├── Detects git commands
-│   └── Routes via MCP to Git Agent
+│   ├── Routes via MCP to Git Agent
+│   └── Breaks down complex tasks into steps
 └── Git Agent (Specialized)
     ├── Handles all git operations
     └── Returns results via MCP
 ```
+
+### Task Breakdown with LLM Reflection
+
+TermAgent includes an intelligent task breakdown system that uses LLM reflection after each shell execution:
+
+1. **Task Analysis**: Complex commands are broken down into logical steps
+2. **Step Execution**: Each step is executed individually with confirmation
+3. **LLM Reflection**: After each execution, the LLM analyzes the output and decides whether to proceed
+4. **Intelligent Decision Making**: The system can stop execution if reflection suggests issues
+5. **Failure Recovery**: Failed steps trigger alternative command suggestions
+
+**Reflection Process**:
+- Analyzes command output, exit codes, and error messages
+- Determines if the step achieved its intended goal
+- Provides reasoning for the decision to proceed or stop
+- Suggests adjustments when needed
+- Uses GPT-4o for high-quality analysis
 
 ## Installation
 
@@ -136,6 +155,13 @@ TermAgent supports voice input for hands-free operation:
 #### Regular Commands
 - Any non-git command will be handled by the regular command handler
 
+#### Source Commands
+- `source <file>` - Source a shell script file (analyzes content and detects virtual environments)
+- `. <file>` - Alternative dot syntax for sourcing files
+- **Virtual Environment Detection**: Automatically detects Python venv, Conda, Pipenv, Poetry, and other environments
+- **Content Analysis**: Analyzes source files for environment variables, aliases, functions, and PATH modifications
+- **Smart Activation**: Provides detailed information about what the source file will do
+
 #### Package Management Commands
 TermAgent supports a wide range of package managers across different operating systems:
 
@@ -198,6 +224,42 @@ termagent/
 ```
 
 ## Development
+
+### Testing Reflection Functionality
+
+To test the new LLM reflection feature:
+
+```bash
+# Run the reflection test script
+python3 test_reflection.py
+
+# Test source command handling
+python3 test_source_commands.py
+
+# Test with real venv
+python3 test_real_venv.py
+
+# Test enhanced reflection with alternatives
+python3 test_enhanced_reflection.py
+
+# Or test interactively with debug mode
+uv run main.py --debug
+```
+
+The reflection system will:
+- Show detailed analysis after each shell execution
+- Display decision reasoning and confidence levels
+- Stop execution if the LLM detects potential issues
+- **ALWAYS suggest alternative commands when shell execution fails**
+- Provide specific, actionable alternatives for common failure scenarios
+- Include confidence levels for all decisions and suggestions
+
+The source command system will:
+- Detect and analyze virtual environment activation scripts
+- Identify environment variable exports and modifications
+- Recognize alias and function definitions
+- Analyze PATH and other environment changes
+- Support Python venv, Conda, Pipenv, Poetry, and other environments
 
 ### Adding New Agents
 
