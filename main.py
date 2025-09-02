@@ -1,10 +1,16 @@
-#!/usr/bin/env python3
-"""
-Simple REPL loop that echoes messages back to the user.
-"""
+import os
+import sys
+from model import call_anthropic
+
+
+def process_command(command: str) -> str:
+    response = call_anthropic(command)
+    print(f"{response}")
+
+    return response
+
 
 def main():
-    print("Simple REPL - Type 'exit' to quit")
     
     while True:
         try:
@@ -16,11 +22,10 @@ def main():
                 print("Goodbye!")
                 break
             
-            # Echo the message back
             if user_input:
-                print(f"Echo: {user_input}")
+                process_command(user_input)
             else:
-                print("Echo: (empty input)")
+                print("Please enter a message for Forq")
                 
         except KeyboardInterrupt:
             print("\nGoodbye!")
