@@ -3,7 +3,16 @@
 import subprocess
 import re
 import sys
+import os
 from typing import Optional, Tuple
+
+# Global variable to track the previous directory for 'cd -' functionality
+_previous_directory: Optional[str] = None
+
+
+def get_previous_directory() -> Optional[str]:
+    """Get the previous directory for debugging or informational purposes."""
+    return _previous_directory
 
 
 # Regex patterns for different types of shell commands
@@ -82,8 +91,86 @@ def is_shell_command(command: str) -> bool:
     return False
 
 
+def is_cd_command(command: str) -> bool:
+    """Check if the command is a cd command."""
+    if not command or not command.strip():
+        return False
+    
+    command_stripped = command.strip()
+    return command_stripped.startswith('cd ') or command_stripped == 'cd'
+
+
+def handle_cd_command(command: str) -> Tuple[str, int]:
+    """Handle cd command by changing the current working directory."""
+    global _previous_directory
+    command_stripped = command.strip()
+    
+    # Get current directory before any changes
+    current_dir = os.getcwd()
+    
+    # Handle 'cd' without arguments (go to home directory)
+    if command_stripped == 'cd':
+        try:
+            home_dir = os.path.expanduser('~')
+            os.chdir(home_dir)
+            _previous_directory = current_dir
+            return f"Changed to home directory: {home_dir}", 0
+        except Exception as e:
+            return f"Error changing to home directory: {str(e)}", 1
+    
+    # Handle 'cd <path>'
+    if command_stripped.startswith('cd '):
+        target_path = command_stripped[3:].strip()
+        
+        # Handle special cases
+        if target_path == '-':
+            # Go to previous directory
+            if _previous_directory is None:
+                return "cd -: No previous directory to change to", 1
+            try:
+                os.chdir(_previous_directory)
+                new_current = os.getcwd()
+                _previous_directory = current_dir
+                return f"Changed to previous directory: {new_current}", 0
+            except Exception as e:
+                return f"Error changing to previous directory: {str(e)}", 1
+        elif target_path == '..':
+            # Go up one directory
+            try:
+                os.chdir('..')
+                new_current = os.getcwd()
+                _previous_directory = current_dir
+                return f"Changed to parent directory: {new_current}", 0
+            except Exception as e:
+                return f"Error changing to parent directory: {str(e)}", 1
+        else:
+            # Regular path
+            try:
+                # Expand ~ and relative paths
+                expanded_path = os.path.expanduser(target_path)
+                os.chdir(expanded_path)
+                new_current = os.getcwd()
+                _previous_directory = current_dir
+                return f"Changed to directory: {new_current}", 0
+            except FileNotFoundError:
+                return f"Directory not found: {target_path}", 1
+            except PermissionError:
+                return f"Permission denied: {target_path}", 1
+            except Exception as e:
+                return f"Error changing directory: {str(e)}", 1
+    
+    return "Invalid cd command", 1
+
+
 def execute_shell_command(command: str, timeout: int = 30) -> Tuple[str, int]:
     """Execute a shell command and return output and return code."""
+    # Handle cd commands specially since they need to change the current working directory
+    if is_cd_command(command):
+        output, return_code = handle_cd_command(command)
+        print(output)
+        return output, return_code
+    
+    # Handle other shell commands with subprocess
     try:
         result = subprocess.run(
             command,
