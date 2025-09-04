@@ -1,9 +1,16 @@
 import os
 import sys
 from model import call_anthropic
+from shell_commands import is_shell_command, execute_shell_command
 
 
 def process_command(command: str) -> str:
+    # Check if it's a shell command and execute directly
+    if is_shell_command(command):
+        output, return_code = execute_shell_command(command)
+        return output
+    
+    # Otherwise, process through AI
     response = call_anthropic(command)
     print(f"{response}")
 
