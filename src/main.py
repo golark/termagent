@@ -2,15 +2,15 @@ import os
 import sys
 from model import call_anthropic
 from shell import is_shell_command, execute_shell_command
+from history import setup_readline_history, save_history, add_to_history, get_input_with_history
 
 
 def process_command(command: str) -> str:
-    # Check if it's a shell command and execute directly
+
     if is_shell_command(command):
         output, return_code = execute_shell_command(command)
         return output
     
-    # Otherwise, process through AI
     response = call_anthropic(command)
     print(f"{response}")
 
@@ -18,28 +18,33 @@ def process_command(command: str) -> str:
 
 
 def main():
+    # Setup history navigation
+    setup_readline_history()
     
-    while True:
-        try:
-            # Get user input
-            user_input = input("> ").strip()
-            
-            # Check for exit command
-            if user_input.lower() in ['exit', 'quit', 'q']:
-                print("Goodbye!")
-                break
-            
-            if user_input:
-                process_command(user_input)
-            else:
-                print("Please enter a message for Forq")
+    try:
+        while True:
+            try:
+                user_input = get_input_with_history("> ").strip()
                 
-        except KeyboardInterrupt:
-            print("\nGoodbye!")
-            break
-        except EOFError:
-            print("\nGoodbye!")
-            break
+                if user_input.lower() in ['exit', 'quit', 'q']:
+                    print("Goodbye!")
+                    break
+                
+                if user_input:
+                    add_to_history(user_input)
+                    process_command(user_input)
+                else:
+                    print("Please enter a message for Forq")
+                    
+            except KeyboardInterrupt:
+                print("\nGoodbye!")
+                break
+            except EOFError:
+                print("\nGoodbye!")
+                break
+    finally:
+        # Save history on exit
+        save_history()
 
 if __name__ == "__main__":
     main()
