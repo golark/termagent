@@ -1,9 +1,11 @@
 # todos
 
-- [ ] command history
-- [ ] rules for AI model ( dont touch files here, never modify README.md, only return simplest... )
+- [x] command history
+- [ ] aliases
 - [ ] user interaction
-- [ ] autonomy level and user interaction
+- [ ] rules for AI model ( dont touch files here, never modify README.md, only return simplest... )
+- [ ] user permissions
+- [ ] autonomy level
 - [ ] save and rerun previous AI commands
 - [ ] AI usage stats command
 - [ ] voice recognition ( local vs online )

@@ -1,11 +1,13 @@
 import os
 import sys
 from model import call_anthropic
-from shell import is_shell_command, execute_shell_command, get_shell_aliases
+from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias
 from history import setup_readline_history, save_history, add_to_history, get_input
+from typing import Dict
 
 
-def process_command(command: str) -> str:
+def process_command(command: str, aliases: Dict[str, str]) -> str:
+    command = resolve_alias(command, aliases)
 
     if is_shell_command(command):
         output, return_code = execute_shell_command(command)
@@ -20,9 +22,7 @@ def process_command(command: str) -> str:
 def main():
 
     setup_readline_history()
-
     aliases = get_shell_aliases()
-    print(f"Aliases: {aliases}")
     
     try:
         while True:
@@ -35,7 +35,7 @@ def main():
                 
                 if user_input:
                     add_to_history(user_input)
-                    process_command(user_input)
+                    process_command(user_input, aliases)
                 else:
                     print("Please enter a message for Forq")
                     
