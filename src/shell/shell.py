@@ -10,25 +10,21 @@ _previous_directory: Optional[str] = None
 
 
 def is_interactive_command(command: str) -> bool:
-    """Check if a command requires interactive TTY."""
     if not command or not command.strip():
         return False
     
     command_stripped = command.strip()
-    # Extract the base command (first word)
     base_command = command_stripped.split()[0]
     
     return base_command in INTERACTIVE_COMMANDS
 
 
 def is_shell_command(command: str) -> bool:
-    """Check if a command is a shell command that should be executed directly."""
     if not command or not command.strip():
         return False
     
     command_stripped = command.strip()
     
-    # Check against all regex patterns
     for pattern in SHELL_COMMAND_PATTERNS:
         if re.match(pattern, command_stripped, re.IGNORECASE):
             return True
@@ -37,7 +33,6 @@ def is_shell_command(command: str) -> bool:
 
 
 def is_cd(command: str) -> bool:
-    """Check if the command is a cd command."""
     if not command or not command.strip():
         return False
     
@@ -107,7 +102,6 @@ def handle_cd_command(command: str) -> Tuple[str, int]:
 
 
 def execute_shell_command(command: str, timeout: int = 30) -> Tuple[str, int]:
-    """Execute a shell command and return output and return code."""
 
     if is_cd(command):
         output, return_code = handle_cd_command(command)
