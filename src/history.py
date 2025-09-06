@@ -97,7 +97,7 @@ def add_to_history(command: str) -> None:
     readline.add_history(command)
 
 
-def get_input_with_history(prompt: str = "> ") -> str:
+def get_input(prompt: str = "> ") -> str:
     """Get user input with history navigation support."""
     try:
         return input(prompt)

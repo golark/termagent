@@ -2,7 +2,7 @@ import os
 import sys
 from model import call_anthropic
 from shell import is_shell_command, execute_shell_command
-from history import setup_readline_history, save_history, add_to_history, get_input_with_history
+from history import setup_readline_history, save_history, add_to_history, get_input
 
 
 def process_command(command: str) -> str:
@@ -24,7 +24,7 @@ def main():
     try:
         while True:
             try:
-                user_input = get_input_with_history("> ").strip()
+                user_input = get_input("> ").strip()
                 
                 if user_input.lower() in ['exit', 'quit', 'q']:
                     print("Goodbye!")
