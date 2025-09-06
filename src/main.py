@@ -1,7 +1,7 @@
 import os
 import sys
 from model import call_anthropic
-from shell_commands import is_shell_command, execute_shell_command
+from shell import is_shell_command, execute_shell_command
 
 
 def process_command(command: str) -> str:
