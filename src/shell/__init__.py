@@ -5,7 +5,10 @@ from .shell import (
     is_cd,
     handle_cd_command,
     execute_shell_command,
-    SHELL_COMMAND_PATTERNS
+)
+from .alias import (
+    get_shell_aliases,
+    resolve_alias,
 )
 
 __all__ = [
@@ -13,5 +16,6 @@ __all__ = [
     'is_cd', 
     'handle_cd_command',
     'execute_shell_command',
-    'SHELL_COMMAND_PATTERNS'
+    'get_shell_aliases',
+    'resolve_alias',
 ]
