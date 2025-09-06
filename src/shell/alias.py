@@ -1,5 +1,3 @@
-"""Shell alias resolution module."""
-
 import subprocess
 import os
 import re
@@ -7,7 +5,6 @@ from typing import Optional, Dict
 
 
 def get_shell_aliases() -> Dict[str, str]:
-    """Get aliases from the current shell."""
     aliases = {}
     
     try:

@@ -2,9 +2,23 @@ import subprocess
 import re
 import sys
 import os
+import tty
+import termios
 from typing import Optional, Tuple
 
 _previous_directory: Optional[str] = None
+
+
+def is_interactive_command(command: str) -> bool:
+    """Check if a command requires interactive TTY."""
+    if not command or not command.strip():
+        return False
+    
+    command_stripped = command.strip()
+    # Extract the base command (first word)
+    base_command = command_stripped.split()[0]
+    
+    return base_command in INTERACTIVE_COMMANDS
 
 
 def is_shell_command(command: str) -> bool:
@@ -100,6 +114,10 @@ def execute_shell_command(command: str, timeout: int = 30) -> Tuple[str, int]:
         print(output)
         return output, return_code
     
+    # Handle interactive commands that need TTY
+    if is_interactive_command(command):
+        return execute_interactive_command(command)
+    
     try:
         result = subprocess.run(
             command,
@@ -123,6 +141,52 @@ def execute_shell_command(command: str, timeout: int = 30) -> Tuple[str, int]:
         return "Error: Command timed out", 124
     except Exception as e:
         return f"Error executing command: {str(e)}", 1
+
+
+def execute_interactive_command(command: str) -> Tuple[str, int]:
+    """Execute an interactive command with proper TTY handling."""
+    try:
+        # Save current terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
+        
+        # Set terminal to raw mode for interactive commands
+        tty.setraw(sys.stdin.fileno())
+        
+        # Execute the command with proper TTY
+        result = subprocess.run(
+            command,
+            shell=True,
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            text=True
+        )
+        
+        # Restore terminal settings
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        
+        return "", result.returncode
+        
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        return "Command interrupted", 130
+    except Exception as e:
+        # Restore terminal settings on error
+        try:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        except:
+            pass
+        return f"Error executing interactive command: {str(e)}", 1
+
+
+# Commands that require interactive TTY
+INTERACTIVE_COMMANDS = {
+    'vim', 'vi', 'nano', 'emacs', 'htop', 'top', 'less', 'more', 
+    'man', 'info', 'watch', 'screen', 'tmux', 'ssh', 'mysql', 
+    'psql', 'python', 'python3', 'node', 'nodejs', 'irb', 'pry',
+    'gdb', 'lldb', 'jdb', 'gdb-multiarch'
+}
 
 
 # Regex patterns for different types of shell commands

@@ -37,17 +37,16 @@ def main():
                     add_to_history(user_input)
                     process_command(user_input, aliases)
                 else:
-                    print("Please enter a message for Forq")
+                    print("Please enter a message for TermAgent")
                     
             except KeyboardInterrupt:
-                print("\nGoodbye!")
                 break
             except EOFError:
-                print("\nGoodbye!")
                 break
     finally:
         # Save history on exit
         save_history()
+
 
 if __name__ == "__main__":
     main()
