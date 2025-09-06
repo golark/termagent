@@ -1,8 +1,7 @@
 import os
 import sys
 from model import call_anthropic
-from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias
-from history import setup_readline_history, save_history, add_to_history, get_input
+from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline_history, save_history, add_to_history, get_input
 from typing import Dict
 
 

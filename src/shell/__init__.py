@@ -10,6 +10,12 @@ from .alias import (
     get_shell_aliases,
     resolve_alias,
 )
+from .history import (
+    setup_readline_history,
+    save_history,
+    add_to_history,
+    get_input,
+)
 
 __all__ = [
     'is_shell_command',
@@ -18,4 +24,8 @@ __all__ = [
     'execute_shell_command',
     'get_shell_aliases',
     'resolve_alias',
+    'setup_readline_history',
+    'save_history',
+    'add_to_history',
+    'get_input',
 ]

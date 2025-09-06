@@ -2,10 +2,11 @@ import os
 import sys
 from typing import Optional
 import anthropic
-from tools import TOOLS, execute_tool
+from .tools import TOOLS, execute_tool
 
 # Load system prompt at module level
-with open('system_prompt.txt', 'r', encoding='utf-8') as f:
+script_dir = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') as f:
     system_prompt = f.read().strip()
 
 def call_anthropic(message: str, api_key: Optional[str] = None) -> str:

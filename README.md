@@ -12,6 +12,8 @@
 - [ ] voice recognition ( local vs online )
 - [ ] local model for simple stuff?
 - [ ] debug if a shell command fails ( user types shell command -> failure -> model )
+- [] multiple commands in parallel
+- [] background commands
 
 ## use cases
 - [ ] comment and commit
