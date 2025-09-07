@@ -98,12 +98,50 @@ def write_file(filepath: str, content: str) -> str:
         return f"Error writing file: {str(e)}"
 
 
+def ask_tool_permission(tool_name: str, parameters: Dict[str, Any]) -> bool:
+    """Ask user for permission before executing a tool"""
+    
+    print('')
+    if tool_name == "bash":
+        command = parameters.get("command", "")
+        print(f"$ {command}")
+    elif tool_name == "read_file":
+        filepath = parameters.get("filepath", "")
+        print(f"File: {filepath}")
+    elif tool_name == "write_file":
+        filepath = parameters.get("filepath", "")
+        content = parameters.get("content", "")
+        print(f"File: {filepath}")
+        print(f"Content length: {len(content)} characters")
+        print("This will write content to a file.")
+    else:
+        print(f"Tool: {tool_name}")
+        print(f"Parameters: {parameters}")
+    
+    while True:
+        response = input("↵ to accept x to reject").strip().lower()
+        print('')
+        if response in ['', 'y', 'yes']:
+            return True
+        elif response in ['x']:
+            return False
+        else:
+            print("Please press ↵ to accept or 'x' to reject.")
+
+
 def execute_tool(tool_name: str, parameters: Dict[str, Any]) -> str:
     """Execute a tool with the given parameters"""
+    
+    # Skip permission for safe operations like reading files
+    if tool_name == "read_file":
+        return read_file(parameters.get("filepath", ""))
+    
+    # Ask for user permission before executing other tools
+    if not ask_tool_permission(tool_name, parameters):
+        return "Tool execution cancelled by user"
+    
     if tool_name == "bash":
         return execute_bash(parameters.get("command", ""))
-    elif tool_name == "read_file":
-        return read_file(parameters.get("filepath", ""))
     elif tool_name == "write_file":
         return write_file(parameters.get("filepath", ""), parameters.get("content", ""))
     else:
