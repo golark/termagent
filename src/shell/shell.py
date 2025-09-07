@@ -186,22 +186,22 @@ INTERACTIVE_COMMANDS = {
 # Regex patterns for different types of shell commands
 SHELL_COMMAND_PATTERNS = [
     # Basic file operations
-    r'^(ls|pwd|cd|mkdir|rmdir|rm|cp|mv|cat|head|tail|touch|chmod|chown|chgrp|ln|tar|zip|unzip|gzip|gunzip)$',
+    r'^(ls|pwd|cd|mkdir|rmdir|rm|cp|mv|cat|head|tail|touch|chmod|chown|chgrp|ln|tar|zip|unzip|gzip|gunzip)(\s+.*)?$',
     
     # Text processing and search
-    r'^(grep|find|which|whereis|awk|sed|cut|sort|uniq|wc|tr|tee|locate|updatedb)$',
+    r'^(grep|find|which|whereis|awk|sed|cut|sort|uniq|wc|tr|tee|locate|updatedb)(\s+.*)?$',
     
     # System monitoring and processes
-    r'^(ps|top|htop|kill|killall|df|du|free|uptime|whoami|id|groups|history|clear|reset)$',
+    r'^(ps|top|htop|kill|killall|df|du|free|uptime|whoami|id|groups|history|clear|reset)(\s+.*)?$',
     
     # Date and time
-    r'^(date|cal|sleep|wait|time|timeout|watch)$',
+    r'^(date|cal|sleep|wait|time|timeout|watch)(\s+.*)?$',
     
     # Job control
-    r'^(jobs|bg|fg|nohup|screen|tmux)$',
+    r'^(jobs|bg|fg|nohup|screen|tmux)(\s+.*)?$',
     
     # Text editors and viewers
-    r'^(vim|nano|emacs|less|more|man|info|apropos|whatis)$',
+    r'^(vim|nano|emacs|less|more|man|info|apropos|whatis)(\s+.*)?$',
     
     # Shell built-ins and environment
     r'^(export|unset|env|printenv|set|source|\.|exit|logout|shutdown|reboot|halt|poweroff)$',
