@@ -5,6 +5,8 @@ from shell import is_shell_command, execute_shell_command, get_shell_aliases, re
 from typing import Dict
 from pprint import pprint
 
+from utils.message_cache import save_messages
+
 
 def process_command(command: str, aliases: Dict[str, str]) -> str:
     command = resolve_alias(command, aliases)
@@ -14,8 +16,8 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         return output
     
     messages = call_anthropic(command)
+    save_messages(command, messages)
     
-    # Print the last assistant message or error
     for message in reversed(messages):
         if message["role"] == "assistant":
             # Extract text content from assistant message
@@ -28,7 +30,6 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
             print(message["content"])
             break
 
-    pprint(messages)
     return messages
 
 
