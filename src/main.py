@@ -3,6 +3,7 @@ import sys
 from model import call_anthropic
 from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline_history, save_history, add_to_history, get_input
 from typing import Dict
+from pprint import pprint
 
 
 def process_command(command: str, aliases: Dict[str, str]) -> str:
@@ -12,10 +13,23 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         output, return_code = execute_shell_command(command)
         return output
     
-    response = call_anthropic(command)
-    print(f"{response}")
+    messages = call_anthropic(command)
+    
+    # Print the last assistant message or error
+    for message in reversed(messages):
+        if message["role"] == "assistant":
+            # Extract text content from assistant message
+            if isinstance(message["content"], list):
+                for content_block in message["content"]:
+                    if content_block.type == "text":
+                        print(content_block.text)
+            break
+        elif message["role"] == "error":
+            print(message["content"])
+            break
 
-    return response
+    pprint(messages)
+    return messages
 
 
 def main():

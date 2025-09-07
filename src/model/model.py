@@ -10,12 +10,12 @@ with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') 
     system_prompt = f.read().strip()
 
 
-def call_anthropic(message: str, api_key: Optional[str] = None) -> str:
+def call_anthropic(message: str, api_key: Optional[str] = None) -> list:
     try:
         # Get API key from parameter or environment
         key = api_key or os.getenv('ANTHROPIC_API_KEY')
         if not key:
-            return "Error: No Anthropic API key provided. Set ANTHROPIC_API_KEY environment variable."
+            return [{"role": "error", "content": "Error: No Anthropic API key provided. Set ANTHROPIC_API_KEY environment variable."}]
         
         # Initialize Anthropic client
         client = anthropic.Anthropic(api_key=key)
@@ -37,11 +37,11 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> str:
         
         # Process initial response if it has text content
         if current_response.stop_reason == "end_turn":
-            final_text = ""
-            for content_block in current_response.content:
-                if content_block.type == "text":
-                    final_text += content_block.text
-            return final_text
+            messages.append({
+                "role": "assistant",
+                "content": current_response.content
+            })
+            return messages
         
         while current_response.stop_reason == "tool_use":
             # Collect all tool uses from the response
@@ -92,13 +92,13 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> str:
 
         # Return the final text response after tool execution
         if current_response.stop_reason == "end_turn":
-            final_text = ""
-            for content_block in current_response.content:
-                if content_block.type == "text":
-                    final_text += content_block.text
-            return final_text
+            messages.append({
+                "role": "assistant",
+                "content": current_response.content
+            })
+            return messages
         
-        return "No response received"
+        return [{"role": "error", "content": "No response received"}]
         
     except Exception as e:
-        return f"Error calling Anthropic API: {str(e)}"
+        return [{"role": "error", "content": f"Error calling Anthropic API: {str(e)}"}]
