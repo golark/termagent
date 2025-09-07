@@ -9,6 +9,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') as f:
     system_prompt = f.read().strip()
 
+
 def call_anthropic(message: str, api_key: Optional[str] = None) -> str:
     try:
         # Get API key from parameter or environment
@@ -30,11 +31,17 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> str:
             tools=TOOLS
         )
         
-        print(f'response: {response}')
-
         # Handle tool calls in a loop until stop_reason is end_turn
         messages = [{"role": "user", "content": message}]
         current_response = response
+        
+        # Process initial response if it has text content
+        if current_response.stop_reason == "end_turn":
+            final_text = ""
+            for content_block in current_response.content:
+                if content_block.type == "text":
+                    final_text += content_block.text
+            return final_text
         
         while current_response.stop_reason == "tool_use":
             # Collect all tool uses from the response
@@ -82,14 +89,14 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> str:
                 messages=messages,
                 tools=TOOLS
             )
-        
-        # Return the final text response
-        if current_response.content:
+
+        # Return the final text response after tool execution
+        if current_response.stop_reason == "end_turn":
             final_text = ""
             for content_block in current_response.content:
                 if content_block.type == "text":
                     final_text += content_block.text
-            return final_text if final_text else "No text response received"
+            return final_text
         
         return "No response received"
         

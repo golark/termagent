@@ -14,6 +14,8 @@
 - [ ] debug if a shell command fails ( user types shell command -> failure -> model )
 - [] multiple commands in parallel
 - [] background commands
+- [] context handling
+- [] model choice
 
 ## use cases
 - [ ] comment and commit

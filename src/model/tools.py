@@ -67,9 +67,9 @@ def execute_bash(command: str) -> str:
         )
         output = f"Exit code: {result.returncode}\n"
         if result.stdout:
-            output += f"STDOUT:\n{result.stdout}\n"
+            output += f"{result.stdout}\n"
         if result.stderr:
-            output += f"STDERR:\n{result.stderr}\n"
+            output += f"{result.stderr}\n"
         return output
     except subprocess.TimeoutExpired:
         return "Error: Command timed out after 30 seconds"
