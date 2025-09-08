@@ -1,11 +1,11 @@
 import os
 import sys
-from model import call_anthropic, should_replay
+from model import call_anthropic
 from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline_history, save_comand_history, add_to_history, get_input
 from typing import Dict
 from utils.message_cache import search_message_cache
 
-from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache
+from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache, should_replay
 
 
 def process_command(command: str, aliases: Dict[str, str]) -> str:
@@ -15,11 +15,11 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         output, return_code = execute_shell_command(command)
         return output
 
-    # if command is in message cache then use the message cache
-    messages = search_message_cache(command)
-    can_replay = should_replay(command)
-    print(f"replay: {can_replay}")
-
+    tool_use_command = should_replay(command)
+    if tool_use_command:
+        output, return_code = execute_shell_command(tool_use_command)
+        return output
+        
     final_message, messages = call_anthropic(command)
     add_to_message_cache(command, messages)
     

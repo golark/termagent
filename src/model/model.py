@@ -3,64 +3,11 @@ import sys
 from typing import Optional
 import anthropic
 from .tools import TOOLS, execute_tool
-from utils.message_cache import get_command_messages
 
 # Load system prompt at module level
 script_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') as f:
     system_prompt = f.read().strip()
-
-
-def should_replay(command) -> bool:
-    messages = get_command_messages(command)
-
-    if not messages:
-        return False
-
-    tool_use_idx = -1
-    for i,m in enumerate(messages):
-        if not m['role'] == 'assistant':
-            continue
-        if not isinstance(m['content'], list):
-            continue
-        for content in m['content']:
-            if content['type'] == 'tool_use':
-                tool_use_idx = i
-                break
-
-    if tool_use_idx == -1:
-        return False
-
-    for i in range(tool_use_idx + 1, len(messages)):
-        if messages[i]['role'] == 'assistant' and messages[i]['content']:
-            return False
-
-    return True
-
-
-def replay_message(messages: list) -> str:
-    """Replay messages by finding the first tool call, executing it, and returning the result."""
-    try:
-        # Find the first assistant message with tool calls
-        for message in messages:
-            if message.get("role") == "assistant" and isinstance(message.get("content"), list):
-                for content_block in message["content"]:
-                    # Handle both serialized and unserialized content blocks
-                    if isinstance(content_block, dict):
-                        if content_block.get('type') == "tool_use":
-                            # Execute the first tool call found
-                            tool_result = execute_tool(content_block.get('name'), content_block.get('input'))
-                            return tool_result
-                    elif hasattr(content_block, 'type') and content_block.type == "tool_use":
-                        # Execute the first tool call found
-                        tool_result = execute_tool(content_block.name, content_block.input)
-                        return tool_result
-        
-        # If no tool calls found, return empty string
-        return ""
-        
-    except Exception as e:
-        return f"Error replaying message: {str(e)}"
 
 
 def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, list]:

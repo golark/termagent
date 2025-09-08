@@ -99,3 +99,32 @@ def get_command_messages(command: str) -> List[Dict[str, Any]]:
     initialize_messages()
     
     return _messages_dict.get(command, [])
+
+
+def should_replay(command: str) -> bool:
+    """Check if a command should be replayed based on its cached messages."""
+    messages = get_command_messages(command)
+
+    if not messages:
+        return None
+
+    tool_use_idx = -1
+    for i, m in enumerate(messages):
+        if not m['role'] == 'assistant':
+            continue
+        if not isinstance(m['content'], list):
+            continue
+        for content in m['content']:
+            if content['type'] == 'tool_use':
+                tool_use_idx = i
+                break
+
+    if tool_use_idx == -1:
+        return None
+
+    for i in range(tool_use_idx + 1, len(messages)):
+        if messages[i]['role'] == 'assistant' and messages[i]['content']:
+            return None
+
+    # return tool_use input command
+    return messages[tool_use_idx]['content'][0]['input']['command']

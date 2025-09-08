@@ -1,8 +1,7 @@
 """Model module for AI API interactions."""
 
-from .model import call_anthropic, should_replay
+from .model import call_anthropic
 
 __all__ = [
-    'call_anthropic',
-    'should_replay',
+    'call_anthropic'
 ]
