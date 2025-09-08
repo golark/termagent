@@ -42,6 +42,10 @@ def _serialize_content(content: Any) -> Any:
     else:
         return content
 
+def search_message_cache(command: str) -> List[Dict[str, Any]]:
+    global _messages_dict
+    initialize_messages()
+    return _messages_dict.get(command, [])
 
 def add_to_message_cache(command: str, messages: List[Dict[str, Any]]) -> None:
     global _messages_dict
@@ -75,3 +79,23 @@ def dump_message_cache() -> None:
         
         with open(messages_file, 'w', encoding='utf-8') as f:
             json.dump(serialized_messages_dict, f, indent=2, ensure_ascii=False)
+
+
+def search_message_cache(command: str) -> List[Dict[str, Any]]:
+    """Search for messages in the cache for a given command."""
+    global _messages_dict
+    
+    # Initialize messages if not already done
+    initialize_messages()
+    
+    return _messages_dict.get(command, [])
+
+
+def get_command_messages(command: str) -> List[Dict[str, Any]]:
+    """Get messages for a specific command from the cache."""
+    global _messages_dict
+    
+    # Initialize messages if not already done
+    initialize_messages()
+    
+    return _messages_dict.get(command, [])
