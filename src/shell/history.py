@@ -82,7 +82,7 @@ def setup_readline_history() -> None:
         pass
 
 
-def save_history() -> None:
+def save_comand_history() -> None:
     """Save history to file."""
     try:
         history_file = get_history_file_path()

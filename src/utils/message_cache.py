@@ -2,6 +2,9 @@ import json
 import os
 from typing import Dict, List, Any
 
+# Global variable to store messages dictionary in memory
+_messages_dict: Dict[str, List[Dict[str, Any]]] = None
+
 
 def get_messages_file_path() -> str:
     """Get the path to the messages file in home directory."""
@@ -9,14 +12,16 @@ def get_messages_file_path() -> str:
     return os.path.join(home_dir, '.termagent', 'messages.json')
 
 
-def load_messages() -> Dict[str, List[Dict[str, Any]]]:
-    """Load saved messages from file."""
-    messages_file = get_messages_file_path()
-    try:
-        with open(messages_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+def initialize_messages() -> None:
+    """Initialize the messages dictionary from file at startup."""
+    global _messages_dict
+    if _messages_dict is None:
+        messages_file = get_messages_file_path()
+        try:
+            with open(messages_file, 'r', encoding='utf-8') as f:
+                _messages_dict = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            _messages_dict = {}
 
 
 def _serialize_content(content: Any) -> Any:
@@ -38,34 +43,35 @@ def _serialize_content(content: Any) -> Any:
         return content
 
 
-def save_messages(command: str, messages: List[Dict[str, Any]]) -> None:
-    """Add successful messages to storage and save to file."""
-    # Check if messages contain any errors
+def add_to_message_cache(command: str, messages: List[Dict[str, Any]]) -> None:
+    global _messages_dict
+    initialize_messages()
+    
     has_error = any(msg.get("role") == "error" for msg in messages)
     
     if not has_error:
-        # Serialize messages to make them JSON-compatible
-        serialized_messages = []
-        for msg in messages:
-            serialized_msg = {
-                'role': msg.get('role'),
-                'content': _serialize_content(msg.get('content'))
-            }
-            serialized_messages.append(serialized_msg)
+        _messages_dict[command] = messages
+
+
+def dump_message_cache() -> None:
+    """Save the in-memory messages dictionary to file with proper serialization."""
+    global _messages_dict
+    
+    if _messages_dict is not None:
+        # Serialize all messages before saving
+        serialized_messages_dict = {}
+        for command, messages in _messages_dict.items():
+            serialized_messages = []
+            for msg in messages:
+                serialized_msg = {
+                    'role': msg.get('role'),
+                    'content': _serialize_content(msg.get('content'))
+                }
+                serialized_messages.append(serialized_msg)
+            serialized_messages_dict[command] = serialized_messages
         
-        # Load existing messages, add new ones, and save
-        messages_dict = load_messages()
-        messages_dict[command] = serialized_messages
-        
-        # Save directly to file
         messages_file = get_messages_file_path()
         os.makedirs(os.path.dirname(messages_file), exist_ok=True)
         
         with open(messages_file, 'w', encoding='utf-8') as f:
-            json.dump(messages_dict, f, indent=2, ensure_ascii=False)
-
-
-def get_messages_for_command(command: str) -> List[Dict[str, Any]]:
-    """Get saved messages for a specific command."""
-    messages_dict = load_messages()
-    return messages_dict.get(command, [])
+            json.dump(serialized_messages_dict, f, indent=2, ensure_ascii=False)

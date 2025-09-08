@@ -12,7 +12,7 @@ from .alias import (
 )
 from .history import (
     setup_readline_history,
-    save_history,
+    save_comand_history,
     add_to_history,
     get_input,
 )
@@ -25,7 +25,7 @@ __all__ = [
     'get_shell_aliases',
     'resolve_alias',
     'setup_readline_history',
-    'save_history',
+    'save_comand_history',
     'add_to_history',
     'get_input',
 ]

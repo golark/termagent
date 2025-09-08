@@ -1,11 +1,11 @@
 import os
 import sys
 from model import call_anthropic
-from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline_history, save_history, add_to_history, get_input
+from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline_history, save_comand_history, add_to_history, get_input
 from typing import Dict
 from pprint import pprint
 
-from utils.message_cache import save_messages
+from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache
 
 
 def process_command(command: str, aliases: Dict[str, str]) -> str:
@@ -15,26 +15,17 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         output, return_code = execute_shell_command(command)
         return output
     
-    messages = call_anthropic(command)
-    save_messages(command, messages)
+    final_message, messages = call_anthropic(command)
+    add_to_message_cache(command, messages)
     
-    for message in reversed(messages):
-        if message["role"] == "assistant":
-            # Extract text content from assistant message
-            if isinstance(message["content"], list):
-                for content_block in message["content"]:
-                    if content_block.type == "text":
-                        print(content_block.text)
-            break
-        elif message["role"] == "error":
-            print(message["content"])
-            break
+    print(final_message)
 
     return messages
 
 
 def main():
-
+    initialize_messages()
+    
     setup_readline_history()
     aliases = get_shell_aliases()
     
@@ -58,8 +49,8 @@ def main():
             except EOFError:
                 break
     finally:
-        # Save history on exit
-        save_history()
+        save_comand_history()
+        dump_message_cache()
 
 
 if __name__ == "__main__":

@@ -10,12 +10,13 @@ with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') 
     system_prompt = f.read().strip()
 
 
-def call_anthropic(message: str, api_key: Optional[str] = None) -> list:
+def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, list]:
     try:
         # Get API key from parameter or environment
         key = api_key or os.getenv('ANTHROPIC_API_KEY')
         if not key:
-            return [{"role": "error", "content": "Error: No Anthropic API key provided. Set ANTHROPIC_API_KEY environment variable."}]
+            error_msg = "Error: No Anthropic API key provided. Set ANTHROPIC_API_KEY environment variable."
+            return error_msg, [{"role": "error", "content": error_msg}]
         
         # Initialize Anthropic client
         client = anthropic.Anthropic(api_key=key)
@@ -41,7 +42,12 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> list:
                 "role": "assistant",
                 "content": current_response.content
             })
-            return messages
+            # Extract final message text for display
+            final_message = ""
+            for content_block in current_response.content:
+                if content_block.type == "text":
+                    final_message += content_block.text
+            return final_message, messages
         
         while current_response.stop_reason == "tool_use":
             # Collect all tool uses from the response
@@ -96,9 +102,16 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> list:
                 "role": "assistant",
                 "content": current_response.content
             })
-            return messages
+            # Extract final message text for display
+            final_message = ""
+            for content_block in current_response.content:
+                if content_block.type == "text":
+                    final_message += content_block.text
+            return final_message, messages
         
-        return [{"role": "error", "content": "No response received"}]
+        error_msg = "No response received"
+        return error_msg, [{"role": "error", "content": error_msg}]
         
     except Exception as e:
-        return [{"role": "error", "content": f"Error calling Anthropic API: {str(e)}"}]
+        error_msg = f"Error calling Anthropic API: {str(e)}"
+        return error_msg, [{"role": "error", "content": error_msg}]
