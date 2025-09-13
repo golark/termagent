@@ -107,24 +107,24 @@ def should_replay(command: str) -> bool:
 
     if not messages:
         return None
-
-    tool_use_idx = -1
+    tool_use_idx = None
     for i, m in enumerate(messages):
         if not m['role'] == 'assistant':
             continue
         if not isinstance(m['content'], list):
             continue
-        for content in m['content']:
+        for k, content in enumerate(m['content']):
             if content['type'] == 'tool_use':
-                tool_use_idx = i
+                tool_use_idx = (i, k)
                 break
 
-    if tool_use_idx == -1:
-        return None
+    if not tool_use_idx:
+        return False 
 
-    for i in range(tool_use_idx + 1, len(messages)):
+    # check if there is any assistant message after tool_use
+    for i in range(tool_use_idx[0] + 1, len(messages)):
         if messages[i]['role'] == 'assistant' and messages[i]['content']:
-            return None
+            return False
 
-    # return tool_use input command
-    return messages[tool_use_idx]['content'][0]['input']['command']
+    i, k = tool_use_idx
+    return messages[i]['content'][k]['input']['command']
