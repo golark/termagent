@@ -19,6 +19,7 @@
 
 ## use cases
 - [ ] comment and commit
+- [ ] fix lint errors
 -
 
 ### tests

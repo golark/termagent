@@ -1,7 +1,7 @@
 import os
 import sys
 from model import call_anthropic
-from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline_history, save_comand_history, add_to_history, get_input
+from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_comand_history, add_to_history, get_input
 from typing import Dict
 from utils.message_cache import search_message_cache
 
@@ -31,7 +31,7 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
 def main():
     initialize_messages()
     
-    setup_readline_history()
+    setup_readline()
     aliases = get_shell_aliases()
     
     try:
