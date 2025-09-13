@@ -12,10 +12,15 @@ from .alias import (
 )
 from .input import (
     setup_readline,
-    save_comand_history,
     add_to_history,
     get_input,
     update_rlcompleter_with_local_files,
+)
+from .history import (
+    CommandHistory,
+    save_command_history,
+    load_command_history,
+    get_history_file_path,
 )
 
 __all__ = [
@@ -26,8 +31,11 @@ __all__ = [
     'get_shell_aliases',
     'resolve_alias',
     'setup_readline',
-    'save_comand_history',
     'add_to_history',
     'get_input',
     'update_rlcompleter_with_local_files',
+    'CommandHistory',
+    'save_command_history',
+    'load_command_history',
+    'get_history_file_path',
 ]

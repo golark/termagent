@@ -1,7 +1,7 @@
 import os
 import sys
 from model import call_anthropic
-from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_comand_history, add_to_history, get_input
+from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_command_history, add_to_history, get_input
 from typing import Dict
 from utils.message_cache import search_message_cache
 
@@ -54,7 +54,7 @@ def main():
             except EOFError:
                 break
     finally:
-        save_comand_history()
+        save_command_history()
         dump_message_cache()
 
 
