@@ -9,6 +9,16 @@ from typing import Optional, Tuple
 _previous_directory: Optional[str] = None
 
 
+def _update_rlcompleter():
+    """Update rlcompleter with local files and folders from current directory."""
+    try:
+        from .input import update_rlcompleter_with_local_files
+        update_rlcompleter_with_local_files()
+    except ImportError:
+        # If the function is not available, just continue
+        pass
+
+
 def is_interactive_command(command: str) -> bool:
     if not command or not command.strip():
         return False
@@ -53,6 +63,8 @@ def handle_cd_command(command: str) -> Tuple[str, int]:
             home_dir = os.path.expanduser('~')
             os.chdir(home_dir)
             _previous_directory = current_dir
+            # Update rlcompleter with new directory contents
+            _update_rlcompleter()
             return f"Changed to home directory: {home_dir}", 0
         except Exception as e:
             return f"Error changing to home directory: {str(e)}", 1
@@ -70,6 +82,8 @@ def handle_cd_command(command: str) -> Tuple[str, int]:
                 os.chdir(_previous_directory)
                 new_current = os.getcwd()
                 _previous_directory = current_dir
+                # Update rlcompleter with new directory contents
+                _update_rlcompleter()
                 return f"Changed to previous directory: {new_current}", 0
             except Exception as e:
                 return f"Error changing to previous directory: {str(e)}", 1
@@ -79,6 +93,8 @@ def handle_cd_command(command: str) -> Tuple[str, int]:
                 os.chdir('..')
                 new_current = os.getcwd()
                 _previous_directory = current_dir
+                # Update rlcompleter with new directory contents
+                _update_rlcompleter()
                 return f"Changed to parent directory: {new_current}", 0
             except Exception as e:
                 return f"Error changing to parent directory: {str(e)}", 1
@@ -90,6 +106,8 @@ def handle_cd_command(command: str) -> Tuple[str, int]:
                 os.chdir(expanded_path)
                 new_current = os.getcwd()
                 _previous_directory = current_dir
+                # Update rlcompleter with new directory contents
+                _update_rlcompleter()
                 return f"Changed to directory: {new_current}", 0
             except FileNotFoundError:
                 return f"Directory not found: {target_path}", 1

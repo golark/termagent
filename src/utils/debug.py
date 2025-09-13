@@ -3,7 +3,7 @@ import sys
 from typing import Any
 
 
-def debug_print(*args, **kwargs) -> None:
+def dbg(*args, **kwargs) -> None:
     """Print debug messages only if debug mode is enabled."""
     if is_debug_mode():
         print("DEBUG |", *args, **kwargs)

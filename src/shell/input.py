@@ -61,13 +61,9 @@ def get_history_file_path() -> str:
 
 
 def setup_readline() -> None:
-    import rlcompleter
-
-    if 'libedit' in readline.__doc__:
-        readline.parse_and_bind("bind ^I rl_complete")
-    else:
-        readline.parse_and_bind("tab: complete")
-    
+    # Set up tab completion
+    readline.set_completer(tab_completer)
+    readline.parse_and_bind('tab: complete')
     
     # Enable readline history
     readline.parse_and_bind(r'"\e[A": history-search-backward')
@@ -84,6 +80,13 @@ def setup_readline() -> None:
         readline.read_history_file(history_file)
     except FileNotFoundError:
         pass
+
+
+def update_rlcompleter_with_local_files() -> None:
+    """Update tab completion with local files and folders from current directory."""
+    # This function is now a no-op since we use the tab_completer function
+    # which dynamically reads the current directory
+    pass
 
 
 def save_comand_history() -> None:
@@ -107,9 +110,13 @@ def get_input(prompt: str = "> ") -> str:
     import sys
     import os
     
+    if 'libedit' in readline.__doc__:
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+    
     # Set up tab completion
     readline.set_completer(tab_completer)
-    readline.parse_and_bind('tab: complete')
     
     # Set up custom key bindings
     readline.parse_and_bind('tab: complete')
@@ -121,24 +128,11 @@ def get_input(prompt: str = "> ") -> str:
         raise
 
 
-def handle_tab_keypress():
-    """Handle Tab keypress for custom completion logic."""
-    import readline
-    
-    # Get current line and cursor position
-    line = readline.get_line_buffer()
-    cursor_pos = readline.get_begidx()
-    
-    # Custom tab completion logic can be added here
-    # For now, we rely on the tab_completer function
-    
-    return None
-
-
 def tab_completer(text: str, state: int) -> str:
     """Tab completion function for commands and file paths."""
     import os
     import glob
+    
     
     # Get the current line
     line = readline.get_line_buffer()
@@ -163,8 +157,13 @@ def tab_completer(text: str, state: int) -> str:
         # Get the last word (which might be a file path)
         last_word = words[-1]
         
-        # If it looks like a file path, try to complete it
-        if '/' in last_word or last_word.startswith('.'):
+        # Commands that typically work with files
+        file_commands = ['cat', 'ls', 'cd', 'rm', 'cp', 'mv', 'grep', 'find', 'chmod', 'chown']
+        
+
+        # If it looks like a file path or the command works with files
+        if ('/' in last_word or last_word.startswith('.') or 
+            (len(words) > 0 and words[0] in file_commands)):
             # File path completion
             dirname = os.path.dirname(last_word)
             basename = os.path.basename(last_word)
@@ -176,13 +175,16 @@ def tab_completer(text: str, state: int) -> str:
                 # Get all files in the directory
                 files = os.listdir(dirname)
                 # Filter files that start with the basename
-                matches = [os.path.join(dirname, f) for f in files if f.startswith(basename)]
-                # Add directories with trailing slash
-                dir_matches = [m + '/' for m in matches if os.path.isdir(m)]
-                file_matches = [m for m in matches if os.path.isfile(m)]
-                all_matches = dir_matches + file_matches
+                matches = []
+                for f in files:
+                    if f.startswith(basename):
+                        full_path = os.path.join(dirname, f)
+                        if os.path.isdir(full_path):
+                            matches.append(f + '/')
+                        else:
+                            matches.append(f)
                 
-                return all_matches[state] if state < len(all_matches) else None
+                return matches[state] if state < len(matches) else None
             except (OSError, PermissionError):
                 return None
         else:

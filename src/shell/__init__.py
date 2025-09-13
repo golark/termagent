@@ -15,6 +15,7 @@ from .input import (
     save_comand_history,
     add_to_history,
     get_input,
+    update_rlcompleter_with_local_files,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     'save_comand_history',
     'add_to_history',
     'get_input',
+    'update_rlcompleter_with_local_files',
 ]

@@ -1,7 +1,7 @@
 """Utilities module for TermAgent."""
 
 from .debug import (
-    debug_print,
+    dbg,
     is_debug_mode
 )
 
@@ -16,7 +16,7 @@ from .message_cache import (
 
 __all__ = [
     # Debug functions
-    'debug_print',
+    'dbg',
     'is_debug_mode',
     
     # Message cache functions
