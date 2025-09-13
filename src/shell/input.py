@@ -5,10 +5,7 @@ import os
 from typing import Optional
 
 from .completions import tab_completer
-from .history import CommandHistory, get_history_file_path, save_command_history, load_command_history
-
-# Global history instance
-command_history = CommandHistory()
+from .history import get_history_file_path, save_command_history, load_command_history
 
 
 def setup_readline() -> None:
@@ -31,19 +28,11 @@ def setup_readline() -> None:
     load_command_history()
 
 
-
-
 def update_rlcompleter_with_local_files() -> None:
     """Update tab completion with local files and folders from current directory."""
     # This function is now a no-op since we use the tab_completer function
     # which dynamically reads the current directory
     pass
-
-
-def add_to_history(command: str) -> None:
-    """Add command to history."""
-    command_history.add_command(command)
-    readline.add_history(command)
 
 
 def get_input(prompt: str = "> ") -> str:

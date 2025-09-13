@@ -12,15 +12,16 @@ from .alias import (
 )
 from .input import (
     setup_readline,
-    add_to_history,
     get_input,
     update_rlcompleter_with_local_files,
 )
 from .history import (
     CommandHistory,
+    command_history,
     save_command_history,
     load_command_history,
     get_history_file_path,
+    add_to_history,
 )
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     'get_input',
     'update_rlcompleter_with_local_files',
     'CommandHistory',
+    'command_history',
     'save_command_history',
     'load_command_history',
     'get_history_file_path',

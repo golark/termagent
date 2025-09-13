@@ -130,13 +130,13 @@ def tab_completer(text: str, state: int) -> str:
         return complete_commands(text, state)
     
     # If we're completing flags/options for a command
-    if len(words) > 0 and words[0] in get_common_commands():
-        command = words[0]
-        last_word = words[-1]
+    #if len(words) > 0 and words[0] in get_common_commands():
+    #    command = words[0]
+    #    last_word = words[-1]
         
-        # If the last word starts with - or --, complete flags
-        if last_word.startswith('-'):
-            return complete_flags(command, last_word, state)
+    #    # If the last word starts with - or --, complete flags
+    #    if last_word.startswith('-'):
+    #        return complete_flags(command, last_word, state)
     
     # If we're completing a file path (after a command)
     if len(words) > 0:
@@ -149,29 +149,9 @@ def tab_completer(text: str, state: int) -> str:
         # If it looks like a file path or the command works with files
         if ('/' in last_word or last_word.startswith('.') or 
             (len(words) > 0 and words[0] in file_commands)):
-            # File path completion
-            dirname = os.path.dirname(last_word)
+            # Use the dedicated complete_files function
             basename = os.path.basename(last_word)
-            
-            if not dirname:
-                dirname = '.'
-            
-            try:
-                # Get all files in the directory
-                files = os.listdir(dirname)
-                # Filter files that start with the basename
-                matches = []
-                for f in files:
-                    if f.startswith(basename):
-                        full_path = os.path.join(dirname, f)
-                        if os.path.isdir(full_path):
-                            matches.append(f + '/')
-                        else:
-                            matches.append(f)
-                
-                return matches[state] if state < len(matches) else None
-            except (OSError, PermissionError):
-                return None
+            return complete_files(basename, state)
         else:
             # Command argument completion
             return complete_commands(text, state)

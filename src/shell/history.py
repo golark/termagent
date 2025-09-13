@@ -77,3 +77,13 @@ def load_command_history() -> None:
             readline.read_history_file(history_file)
     except Exception:
         pass  # Ignore errors when loading history
+
+
+# Global history instance
+command_history = CommandHistory()
+
+
+def add_to_history(command: str) -> None:
+    """Add command to history."""
+    command_history.add_command(command)
+    readline.add_history(command)
