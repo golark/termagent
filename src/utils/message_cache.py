@@ -81,16 +81,6 @@ def dump_message_cache() -> None:
             json.dump(serialized_messages_dict, f, indent=2, ensure_ascii=False)
 
 
-def search_message_cache(command: str) -> List[Dict[str, Any]]:
-    """Search for messages in the cache for a given command."""
-    global _messages_dict
-    
-    # Initialize messages if not already done
-    initialize_messages()
-    
-    return _messages_dict.get(command, [])
-
-
 def get_command_messages(command: str) -> List[Dict[str, Any]]:
     """Get messages for a specific command from the cache."""
     global _messages_dict

@@ -8,7 +8,6 @@ from .debug import (
 from .message_cache import (
     initialize_messages,
     add_to_message_cache,
-    search_message_cache,
     get_command_messages,
     should_replay,
     dump_message_cache
@@ -22,7 +21,6 @@ __all__ = [
     # Message cache functions
     'initialize_messages',
     'add_to_message_cache',
-    'search_message_cache',
     'get_command_messages',
     'should_replay',
     'dump_message_cache'

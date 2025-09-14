@@ -3,7 +3,6 @@ import sys
 from model import call_anthropic
 from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_command_history, add_to_history, get_input
 from typing import Dict
-from utils.message_cache import search_message_cache
 
 from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache, should_replay
 

@@ -58,17 +58,3 @@ def resolve_alias(command: str, aliases: Optional[Dict[str, str]] = None) -> str
     return command
 
 
-def is_alias(command: str, aliases: Optional[Dict[str, str]] = None) -> bool:
-    """Check if a command starts with an alias."""
-    if not command or not command.strip():
-        return False
-    
-    if aliases is None:
-        aliases = get_shell_aliases()
-    
-    command_parts = command.strip().split()
-    if not command_parts:
-        return False
-    
-    command_name = command_parts[0]
-    return command_name in aliases
