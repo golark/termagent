@@ -90,7 +90,17 @@ def should_replay(command: str) -> bool:
         if not isinstance(m['content'], list):
             continue
         for k, content in enumerate(m['content']):
-            if content['type'] == 'tool_use':
+            # Handle both serialized dict and Anthropic API objects
+            if hasattr(content, 'type'):
+                # Anthropic API object (TextBlock, ToolUse, etc.)
+                content_type = content.type
+            elif isinstance(content, dict):
+                # Serialized content
+                content_type = content.get('type')
+            else:
+                continue
+                
+            if content_type == 'tool_use':
                 tool_use_idx = (i, k)
                 break
 
