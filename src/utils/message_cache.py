@@ -7,13 +7,11 @@ _messages_dict: Dict[str, List[Dict[str, Any]]] = None
 
 
 def get_messages_file_path() -> str:
-    """Get the path to the messages file in home directory."""
     home_dir = os.path.expanduser('~')
     return os.path.join(home_dir, '.termagent', 'messages.json')
 
 
 def initialize_messages() -> None:
-    """Initialize the messages dictionary from file at startup."""
     global _messages_dict
     if _messages_dict is None:
         messages_file = get_messages_file_path()
@@ -25,7 +23,6 @@ def initialize_messages() -> None:
 
 
 def _serialize_content(content: Any) -> Any:
-    """Convert Anthropic API objects to JSON-serializable format."""
     if hasattr(content, '__dict__'):
         # Handle Anthropic API objects like TextBlock, ToolUse, etc.
         return {
@@ -42,11 +39,6 @@ def _serialize_content(content: Any) -> Any:
     else:
         return content
 
-def search_message_cache(command: str) -> List[Dict[str, Any]]:
-    global _messages_dict
-    initialize_messages()
-    return _messages_dict.get(command, [])
-
 def add_to_message_cache(command: str, messages: List[Dict[str, Any]]) -> None:
     global _messages_dict
     initialize_messages()
@@ -57,23 +49,21 @@ def add_to_message_cache(command: str, messages: List[Dict[str, Any]]) -> None:
         _messages_dict[command] = messages
 
 
+def serialize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    serialized = []
+    for msg in messages:
+        serialized.append({
+            'role': msg.get('role'),
+            'content': _serialize_content(msg.get('content'))
+        })
+    return serialized
+
 def dump_message_cache() -> None:
-    """Save the in-memory messages dictionary to file with proper serialization."""
     global _messages_dict
     
     if _messages_dict is not None:
-        # Serialize all messages before saving
-        serialized_messages_dict = {}
-        for command, messages in _messages_dict.items():
-            serialized_messages = []
-            for msg in messages:
-                serialized_msg = {
-                    'role': msg.get('role'),
-                    'content': _serialize_content(msg.get('content'))
-                }
-                serialized_messages.append(serialized_msg)
-            serialized_messages_dict[command] = serialized_messages
-        
+        serialized_messages_dict = {command: serialize_messages(messages) for command, messages in _messages_dict.items()}
+       
         messages_file = get_messages_file_path()
         os.makedirs(os.path.dirname(messages_file), exist_ok=True)
         
@@ -82,17 +72,13 @@ def dump_message_cache() -> None:
 
 
 def get_command_messages(command: str) -> List[Dict[str, Any]]:
-    """Get messages for a specific command from the cache."""
     global _messages_dict
-    
-    # Initialize messages if not already done
     initialize_messages()
     
     return _messages_dict.get(command, [])
 
 
 def should_replay(command: str) -> bool:
-    """Check if a command should be replayed based on its cached messages."""
     messages = get_command_messages(command)
 
     if not messages:

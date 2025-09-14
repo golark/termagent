@@ -1,8 +1,7 @@
-import os
-import sys
 from model import call_anthropic
 from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_command_history, add_to_history, get_input
 from typing import Dict
+from utils.debug import dbg_messages
 
 from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache, should_replay
 
@@ -21,7 +20,8 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         
     final_message, messages = call_anthropic(command)
     add_to_message_cache(command, messages)
-    
+    dbg_messages(command, messages)
+
     print(final_message)
 
     return messages
