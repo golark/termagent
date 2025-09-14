@@ -2,11 +2,11 @@ from model import call_anthropic, ContextWindowExceededError
 from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_command_history, add_to_history, get_input
 from typing import Dict
 from utils.debug import dbg_messages
-
+from utils.config import Config
 from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache, should_replay
 
 
-def process_command(command: str, aliases: Dict[str, str]) -> str:
+def process_command(command: str, aliases: Dict[str, str], config: Config) -> str:
     command = resolve_alias(command, aliases)
 
     if is_shell_command(command):
@@ -19,7 +19,7 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         return output
         
     try:
-        final_message, messages = call_anthropic(command)
+        final_message, messages = call_anthropic(command, config=config)
         add_to_message_cache(command, messages)
         dbg_messages(command, messages)
         print(final_message)
@@ -32,6 +32,9 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
 
 
 def main():
+    config = Config.from_file()
+    config.print_autonomy_info()
+    
     initialize_messages()
     
     setup_readline()
@@ -48,7 +51,7 @@ def main():
                 
                 if user_input:
                     add_to_history(user_input)
-                    process_command(user_input, aliases)
+                    process_command(user_input, aliases, config)
                 else:
                     print("Please enter a message for TermAgent")
                     

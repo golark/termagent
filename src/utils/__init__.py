@@ -13,6 +13,11 @@ from .message_cache import (
     dump_message_cache
 )
 
+from .config import (
+    Config,
+    AutonomyLevel
+)
+
 __all__ = [
     # Debug functions
     'dbg',
@@ -23,5 +28,9 @@ __all__ = [
     'add_to_message_cache',
     'get_command_messages',
     'should_replay',
-    'dump_message_cache'
+    'dump_message_cache',
+    
+    # Config classes
+    'Config',
+    'AutonomyLevel'
 ]

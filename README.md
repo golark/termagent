@@ -4,9 +4,9 @@
 - [x] aliases
 - [x] interactive shell commands
 - [x] save and rerun previous AI commands
-- [ ] manage context length
+- [x] manage context length
+- [x] autonomy level
 - [ ] user permissions
-- [ ] autonomy level
 - [ ] rules for AI model ( dont touch files here, never modify README.md, only return simplest... )
 
 - [ ] AI usage stats command

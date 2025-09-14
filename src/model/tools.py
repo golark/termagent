@@ -1,7 +1,8 @@
 """Tool functions for TermAgent."""
 
 import subprocess
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from utils.config import Config, AutonomyLevel
 
 
 # Define available tools
@@ -186,9 +187,15 @@ def ask_tool_permission(tool_name: str, parameters: Dict[str, Any]) -> bool:
             print("Please press ↵ to accept or 'x' to reject.")
 
 
-def execute_tool(tool_name: str, parameters: Dict[str, Any]) -> str:
-
-    if requires_permission(tool_name, parameters):
+def execute_tool(tool_name: str, parameters: Dict[str, Any], config: Optional[Config] = None) -> str:
+    """Execute a tool with optional autonomy level configuration."""
+    
+    # Use default config if none provided
+    if config is None:
+        config = Config()
+    
+    # Check if permission should be asked based on autonomy level
+    if config.should_ask_permission(tool_name, parameters):
         if not ask_tool_permission(tool_name, parameters):
             return "Tool execution cancelled by user"
     

@@ -3,6 +3,7 @@ import sys
 from typing import Optional
 import anthropic
 from .tools import TOOLS, execute_tool
+from utils.config import Config
 
 # Load system prompt at module level
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,11 +18,14 @@ class ContextWindowExceededError(Exception):
         self.char_count = char_count
         super().__init__(f"Exceeded context window limit: {ContextWindowLimit:,}, got {char_count:,}")
 
-def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, list]:
+def call_anthropic(message: str, api_key: Optional[str] = None, config: Optional[Config] = None) -> tuple[str, list]:
     try:
+        # Use config's context limit if available, otherwise use default
+        context_limit = config.max_context_length if config else ContextWindowLimit
+        
         # Check message length and warn if exceeds context window
         char_count = len(message)
-        if char_count > ContextWindowLimit:
+        if char_count > context_limit:
             raise ContextWindowExceededError(char_count)
         
         # Get API key from parameter or environment
@@ -33,9 +37,12 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, li
         # Initialize Anthropic client
         client = anthropic.Anthropic(api_key=key)
         
+        # Use config's model if available, otherwise use default
+        model_name = config.model if config else "claude-3-5-sonnet-20241022"
+        
         # Make the API call with system message and tools
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model=model_name,
             max_tokens=1000,
             system=system_prompt,
             messages=[
@@ -79,7 +86,7 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, li
             # Execute all tools
             tool_results = []
             for tool_use in tool_uses:
-                tool_result = execute_tool(tool_use.name, tool_use.input)
+                tool_result = execute_tool(tool_use.name, tool_use.input, config)
                 print(f'Tool {tool_use.name} result: {tool_result}')
                 tool_results.append({
                     "type": "tool_result",
@@ -101,7 +108,7 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, li
             
             # Get next response from Anthropic
             current_response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=model_name,
                 max_tokens=1000,
                 system=system_prompt,
                 messages=messages,
