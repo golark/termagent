@@ -54,13 +54,15 @@ class Config:
                 "full": AutonomyLevel.FULLY_AUTONOMOUS
             }
             autonomy_level = autonomy_map.get(autonomy_str.lower(), AutonomyLevel.MANUAL)
-            
-            return cls(
+            c = cls(
                 autonomy_level=autonomy_level,
                 debug_mode=config_data.get("debug_mode", False),
                 max_context_length=config_data.get("max_context_length", 200000),
                 model=config_data.get("model", "claude-3-5-sonnet-20241022")
             )
+            c.set_autonomy_level(autonomy_level.value)
+            return 
+
         except FileNotFoundError:
             # Create default config file and return default config
             default_config = cls()
@@ -112,8 +114,19 @@ class Config:
         else:  # MANUAL
             return True
     
-    def print_autonomy_info(self) -> None:
-        """Print autonomy level information."""
+    def set_autonomy_level(self, autonomy_level: str) -> None:
+        """Set autonomy level from string."""
+        autonomy_map = {
+            "manual": AutonomyLevel.MANUAL,
+            "semi": AutonomyLevel.SEMI_AUTONOMOUS,
+            "full": AutonomyLevel.FULLY_AUTONOMOUS
+        }
+        
+        if autonomy_level.lower() not in autonomy_map:
+            raise ValueError(f"Invalid autonomy level: {autonomy_level}. Must be one of: manual, semi, full")
+        
+        self.autonomy_level = autonomy_map[autonomy_level.lower()]
+
         if self.autonomy_level == AutonomyLevel.FULLY_AUTONOMOUS:
             print("🤖 Running in FULLY AUTONOMOUS mode - no permission prompts")
         elif self.autonomy_level == AutonomyLevel.SEMI_AUTONOMOUS:

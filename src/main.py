@@ -33,7 +33,6 @@ def process_command(command: str, aliases: Dict[str, str], config: Config) -> st
 
 def main():
     config = Config.from_file()
-    config.print_autonomy_info()
     
     initialize_messages()
     
