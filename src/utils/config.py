@@ -17,10 +17,9 @@ class Config:
     """Configuration class for TermAgent."""
     
     def __init__(self, autonomy_level: AutonomyLevel = AutonomyLevel.MANUAL, 
-                 debug_mode: bool = False, max_context_length: int = 200000,
+                 max_context_length: int = 200000,
                  model: str = "claude-3-5-sonnet-20241022"):
         self.autonomy_level = autonomy_level
-        self.debug_mode = debug_mode
         self.max_context_length = max_context_length
         self.model = model
     
@@ -46,7 +45,6 @@ class Config:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
             
-            # Parse autonomy level
             autonomy_str = config_data.get("autonomy_level", "manual")
             autonomy_map = {
                 "manual": AutonomyLevel.MANUAL,
@@ -56,12 +54,10 @@ class Config:
             autonomy_level = autonomy_map.get(autonomy_str.lower(), AutonomyLevel.MANUAL)
             c = cls(
                 autonomy_level=autonomy_level,
-                debug_mode=config_data.get("debug_mode", False),
                 max_context_length=config_data.get("max_context_length", 200000),
                 model=config_data.get("model", "claude-3-5-sonnet-20241022")
             )
-            c.set_autonomy_level(autonomy_level.value)
-            return 
+            return c 
 
         except FileNotFoundError:
             # Create default config file and return default config
@@ -84,7 +80,6 @@ class Config:
         
         config_data = {
             "autonomy_level": self.autonomy_level.value,
-            "debug_mode": self.debug_mode,
             "max_context_length": self.max_context_length,
             "model": self.model
         }
@@ -126,10 +121,20 @@ class Config:
             raise ValueError(f"Invalid autonomy level: {autonomy_level}. Must be one of: manual, semi, full")
         
         self.autonomy_level = autonomy_map[autonomy_level.lower()]
-
+    
+    def print_autonomy_info(self) -> None:
+        """Print autonomy level information."""
         if self.autonomy_level == AutonomyLevel.FULLY_AUTONOMOUS:
             print("🤖 Running in FULLY AUTONOMOUS mode - no permission prompts")
         elif self.autonomy_level == AutonomyLevel.SEMI_AUTONOMOUS:
             print("⚡ Running in SEMI-AUTONOMOUS mode - minimal permission prompts")
         else:
             print("👤 Running in MANUAL mode - permission required for all operations")
+    
+    def display(self) -> None:
+        """Display current configuration settings."""
+        print("\n📋 Current Configuration:")
+        print(f"  Autonomy Level: {self.autonomy_level.value}")
+        print(f"  Max Context Length: {self.max_context_length:,}")
+        print(f"  Model: {self.model}")
+        print()

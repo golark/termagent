@@ -6,8 +6,9 @@
 - [x] save and rerun previous AI commands
 - [x] manage context length
 - [x] autonomy level
-- [ ] user permissions
 - [ ] rules for AI model ( dont touch files here, never modify README.md, only return simplest... )
+- [ ] user permissions
+- [ ] cost monitor
 - [ ] AI usage stats command
 - [ ] voice recognition ( local vs online )
 - [ ] local model for simple stuff?

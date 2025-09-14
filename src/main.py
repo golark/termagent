@@ -9,6 +9,10 @@ from utils.message_cache import add_to_message_cache, initialize_messages, dump_
 def process_command(command: str, aliases: Dict[str, str], config: Config) -> str:
     command = resolve_alias(command, aliases)
 
+    if command.lower() == "config":
+        config.display()
+        return ""
+
     if is_shell_command(command):
         output, return_code = execute_shell_command(command)
         return output
