@@ -4,8 +4,8 @@
 - [x] aliases
 - [x] interactive shell commands
 - [x] save and rerun previous AI commands
-- [ ] user permissions
 - [ ] manage context length
+- [ ] user permissions
 - [ ] autonomy level
 - [ ] rules for AI model ( dont touch files here, never modify README.md, only return simplest... )
 
@@ -15,12 +15,10 @@
 - [ ] debug if a shell command fails ( user types shell command -> failure -> model )
 - [] multiple commands in parallel
 - [] background commands
-- [] context handling
 - [] model choice
 
 ## use cases
 - [ ] comment and commit
 - [ ] fix lint errors
--
 
 ### tests

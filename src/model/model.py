@@ -9,9 +9,21 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') as f:
     system_prompt = f.read().strip()
 
+ContextWindowLimit = 200000
+
+class ContextWindowExceededError(Exception):
+    """Raised when message exceeds the context window limit."""
+    def __init__(self, char_count: int):
+        self.char_count = char_count
+        super().__init__(f"Exceeded context window limit: {ContextWindowLimit:,}, got {char_count:,}")
 
 def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, list]:
     try:
+        # Check message length and warn if exceeds context window
+        char_count = len(message)
+        if char_count > ContextWindowLimit:
+            raise ContextWindowExceededError(char_count)
+        
         # Get API key from parameter or environment
         key = api_key or os.getenv('ANTHROPIC_API_KEY')
         if not key:
@@ -112,6 +124,8 @@ def call_anthropic(message: str, api_key: Optional[str] = None) -> tuple[str, li
         error_msg = "No response received"
         return error_msg, [{"role": "error", "content": error_msg}]
         
+    except ContextWindowExceededError as e:
+        raise e
     except Exception as e:
         error_msg = f"Error calling Anthropic API: {str(e)}"
         return error_msg, [{"role": "error", "content": error_msg}]

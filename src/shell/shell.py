@@ -192,8 +192,9 @@ SHELL_COMMAND_PATTERNS = [
     r'^(grep|find|which|whereis|awk|sed|cut|sort|uniq|wc|tr|tee|locate|updatedb)(\s+.*)?$',
     
     # System monitoring and processes
-    r'^(ps|top|htop|kill|killall|df|du|free|uptime|whoami|id|groups|history|clear|reset)(\s+.*)?$',
-    
+    r'^(ps|top|htop|kill|killall|df|du|uptime|whoami|id|groups|history|clear|reset)(\s+.*)?$',
+
+    r'^free\s+-.*$',
     # Date and time
     r'^(date|cal|sleep|wait|time|timeout|watch)(\s+.*)?$',
     
@@ -240,5 +241,5 @@ SHELL_COMMAND_PATTERNS = [
     r'^(\./|\.\./)',
     
     # Commands with common flags (like ls -la, grep -r, etc.)
-    r'^(ls|grep|find|ps|df|du|free|mount|umount|systemctl|docker|git|npm|pip|python|node|make|gcc|g\+\+|clang)\s+',
+    r'^(ls|grep|find|ps|df|du|mount|umount|systemctl|docker|git|npm|pip|python|node|make|gcc|g\+\+|clang)\s+',
 ]

@@ -1,4 +1,4 @@
-from model import call_anthropic
+from model import call_anthropic, ContextWindowExceededError
 from shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_command_history, add_to_history, get_input
 from typing import Dict
 from utils.debug import dbg_messages
@@ -18,13 +18,17 @@ def process_command(command: str, aliases: Dict[str, str]) -> str:
         output, return_code = execute_shell_command(tool_use_command)
         return output
         
-    final_message, messages = call_anthropic(command)
-    add_to_message_cache(command, messages)
-    dbg_messages(command, messages)
-
-    print(final_message)
-
-    return messages
+    try:
+        final_message, messages = call_anthropic(command)
+        add_to_message_cache(command, messages)
+        dbg_messages(command, messages)
+        print(final_message)
+        return messages
+    except ContextWindowExceededError as e:
+        # Context window exceeded - the error is already handled in call_anthropic
+        # but we need to handle it here to prevent the program from crashing
+        warning_msg = f"⚠️  {str(e)}"
+        print(warning_msg)
 
 
 def main():
