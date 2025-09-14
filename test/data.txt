@@ -1,0 +1,5 @@
+Random data:
+123456
+abcdef
+Testing data structures
+End of file
