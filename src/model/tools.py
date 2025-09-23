@@ -36,7 +36,7 @@ TOOLS = [
         }
     },
     {
-        "name": "write_file",
+        "name": "edit_file",
         "description": "Write content to a file",
         "input_schema": {
             "type": "object",
@@ -89,7 +89,7 @@ def read_file(filepath: str) -> str:
         return f"Error reading file: {str(e)}"
 
 
-def write_file(filepath: str, content: str) -> str:
+def edit_file(filepath: str, content: str) -> str:
     """Write content to a file"""
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -101,7 +101,7 @@ def write_file(filepath: str, content: str) -> str:
 
 def requires_permission(tool_name: str, parameters: Dict[str, Any] = None) -> bool:
 
-    if tool_name == "write_file":
+    if tool_name == "edit_file":
         return True
     elif tool_name == "read_file":
         return False
@@ -166,7 +166,7 @@ def ask_tool_permission(tool_name: str, parameters: Dict[str, Any]) -> bool:
     elif tool_name == "read_file":
         filepath = parameters.get("filepath", "")
         print(f"File: {filepath}")
-    elif tool_name == "write_file":
+    elif tool_name == "edit_file":
         filepath = parameters.get("filepath", "")
         content = parameters.get("content", "")
         print(f"File: {filepath}")
@@ -201,8 +201,8 @@ def execute_tool(tool_name: str, parameters: Dict[str, Any], config: Optional[Co
     
     if tool_name == "bash":
         return execute_bash(parameters.get("command", ""))
-    elif tool_name == "write_file":
-        return write_file(parameters.get("filepath", ""), parameters.get("content", ""))
+    elif tool_name == "edit_file":
+        return edit_file(parameters.get("filepath", ""), parameters.get("content", ""))
     elif tool_name == "read_file":
         return read_file(parameters.get("filepath", ""))
     else:

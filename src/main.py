@@ -37,9 +37,7 @@ def process_command(command: str, aliases: Dict[str, str], config: Config) -> st
 
 def main():
     config = Config.from_file()
-    
     initialize_messages()
-    
     setup_readline()
     aliases = get_shell_aliases()
     

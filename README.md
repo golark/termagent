@@ -10,7 +10,7 @@
 - [ ] user permissions
 - [ ] cost monitor
 - [ ] AI usage stats command
-- [ ] voice recognition ( local vs online )
+- [ ] voice recognition ( local vs online vs dictation )
 - [ ] local model for simple stuff?
 - [ ] debug if a shell command fails ( user types shell command -> failure -> model )
 - [] multiple commands in parallel

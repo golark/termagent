@@ -4,6 +4,7 @@ from typing import Optional
 import anthropic
 from .tools import TOOLS, execute_tool
 from utils.config import Config
+from utils.token_counter import count_conversation_tokens, display_token_usage, estimate_cost
 
 # Load system prompt at module level
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +41,14 @@ def call_anthropic(message: str, api_key: Optional[str] = None, config: Optional
         # Use config's model if available, otherwise use default
         model_name = config.model if config else "claude-3-5-sonnet-20241022"
         
+        # Count input tokens before API call
+        input_messages = [{"role": "user", "content": message}]
+        input_tokens = count_conversation_tokens(input_messages, system_prompt)
+        
+        # Show input tokens only in debug mode
+        if config and config.debug_mode:
+            print(f"📥 Input tokens: {input_tokens:,}")
+        
         # Make the API call with system message and tools
         response = client.messages.create(
             model=model_name,
@@ -61,6 +70,21 @@ def call_anthropic(message: str, api_key: Optional[str] = None, config: Optional
                 "role": "assistant",
                 "content": current_response.content
             })
+            
+            # Count output tokens
+            output_tokens = count_conversation_tokens(messages, system_prompt) - input_tokens
+            total_tokens = input_tokens + output_tokens
+            
+            # Print token usage
+            debug_mode = config.debug_mode if config else False
+            display_token_usage(input_tokens, output_tokens, total_tokens, debug_mode)
+            
+            # Show cost estimate only in debug mode
+            if debug_mode:
+                estimated_cost = estimate_cost(total_tokens, model_name)
+                if estimated_cost > 0:
+                    print(f"💰 Estimated cost: ${estimated_cost:.4f}")
+            
             # Extract final message text for display
             final_message = ""
             for content_block in current_response.content:
@@ -121,6 +145,13 @@ def call_anthropic(message: str, api_key: Optional[str] = None, config: Optional
                 "role": "assistant",
                 "content": current_response.content
             })
+            
+            # Count final output tokens
+            output_tokens = count_conversation_tokens(messages, system_prompt) - input_tokens
+            total_tokens = input_tokens + output_tokens
+            
+            display_token_usage(input_tokens, output_tokens, total_tokens, model_name, config.debug_mode if config else False)
+            
             # Extract final message text for display
             final_message = ""
             for content_block in current_response.content:

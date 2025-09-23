@@ -17,9 +17,10 @@ class Config:
     """Configuration class for TermAgent."""
     
     def __init__(self, autonomy_level: AutonomyLevel = AutonomyLevel.MANUAL, 
-                 max_context_length: int = 200000,
+                 debug_mode: bool = False, max_context_length: int = 200000,
                  model: str = "claude-3-5-sonnet-20241022"):
         self.autonomy_level = autonomy_level
+        self.debug_mode = debug_mode
         self.max_context_length = max_context_length
         self.model = model
     
@@ -54,6 +55,7 @@ class Config:
             autonomy_level = autonomy_map.get(autonomy_str.lower(), AutonomyLevel.MANUAL)
             c = cls(
                 autonomy_level=autonomy_level,
+                debug_mode=config_data.get("debug_mode", False),
                 max_context_length=config_data.get("max_context_length", 200000),
                 model=config_data.get("model", "claude-3-5-sonnet-20241022")
             )
@@ -80,6 +82,7 @@ class Config:
         
         config_data = {
             "autonomy_level": self.autonomy_level.value,
+            "debug_mode": self.debug_mode,
             "max_context_length": self.max_context_length,
             "model": self.model
         }
@@ -89,6 +92,10 @@ class Config:
     
     def should_ask_permission(self, tool_name: str, parameters: dict) -> bool:
         """Determine if permission should be asked based on autonomy level."""
+        # Read operations never require permission
+        if tool_name == "read_file":
+            return False
+            
         if self.autonomy_level == AutonomyLevel.FULLY_AUTONOMOUS:
             return False
         elif self.autonomy_level == AutonomyLevel.SEMI_AUTONOMOUS:
@@ -102,7 +109,7 @@ class Config:
                     "shutdown", "reboot", "halt", "poweroff"
                 ]
                 return any(pattern in command.lower() for pattern in dangerous_patterns)
-            elif tool_name == "write_file":
+            elif tool_name == "edit_file":
                 # Ask for write operations in semi-autonomous mode
                 return True
             return False
@@ -135,6 +142,7 @@ class Config:
         """Display current configuration settings."""
         print("\n📋 Current Configuration:")
         print(f"  Autonomy Level: {self.autonomy_level.value}")
+        print(f"  Debug Mode: {self.debug_mode}")
         print(f"  Max Context Length: {self.max_context_length:,}")
         print(f"  Model: {self.model}")
         print()
