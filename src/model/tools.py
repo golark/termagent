@@ -1,6 +1,7 @@
 """Tool functions for TermAgent."""
 
 import subprocess
+import os
 from typing import Dict, Any, Optional
 from utils.config import Config, AutonomyLevel
 
@@ -52,6 +53,34 @@ TOOLS = [
             },
             "required": ["filepath", "content"]
         }
+    },
+    {
+        "name": "list_dir",
+        "description": "List the contents of a directory",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "directory_path": {
+                    "type": "string",
+                    "description": "Path to the directory to list"
+                }
+            },
+            "required": ["directory_path"]
+        }
+    },
+    {
+        "name": "delete_file",
+        "description": "Delete a file",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filepath": {
+                    "type": "string",
+                    "description": "Path to the file to delete"
+                }
+            },
+            "required": ["filepath"]
+        }
     }
 ]
 
@@ -99,11 +128,72 @@ def edit_file(filepath: str, content: str) -> str:
         return f"Error writing file: {str(e)}"
 
 
+def list_dir(directory_path: str) -> str:
+    """List the contents of a directory"""
+    try:
+        if not os.path.exists(directory_path):
+            return f"Error: Directory '{directory_path}' does not exist"
+        
+        if not os.path.isdir(directory_path):
+            return f"Error: '{directory_path}' is not a directory"
+        
+        items = os.listdir(directory_path)
+        if not items:
+            return f"Directory '{directory_path}' is empty"
+        
+        # Sort items with directories first
+        dirs = []
+        files = []
+        
+        for item in items:
+            item_path = os.path.join(directory_path, item)
+            if os.path.isdir(item_path):
+                dirs.append(f"{item}/")
+            else:
+                files.append(item)
+        
+        # Combine and sort
+        sorted_items = sorted(dirs) + sorted(files)
+        
+        result = f"Contents of '{directory_path}':\n"
+        for item in sorted_items:
+            result += f"  {item}\n"
+        
+        return result.strip()
+        
+    except PermissionError:
+        return f"Error: Permission denied accessing '{directory_path}'"
+    except Exception as e:
+        return f"Error listing directory: {str(e)}"
+
+
+def delete_file(filepath: str) -> str:
+    """Delete a file"""
+    try:
+        if not os.path.exists(filepath):
+            return f"Error: File '{filepath}' does not exist"
+        
+        if os.path.isdir(filepath):
+            return f"Error: '{filepath}' is a directory, not a file"
+        
+        os.remove(filepath)
+        return f"Successfully deleted file '{filepath}'"
+        
+    except PermissionError:
+        return f"Error: Permission denied deleting '{filepath}'"
+    except Exception as e:
+        return f"Error deleting file: {str(e)}"
+
+
 def requires_permission(tool_name: str, parameters: Dict[str, Any] = None) -> bool:
 
     if tool_name == "edit_file":
         return True
+    elif tool_name == "delete_file":
+        return True
     elif tool_name == "read_file":
+        return False
+    elif tool_name == "list_dir":
         return False
     elif tool_name == "bash":
         if parameters:
@@ -166,6 +256,13 @@ def ask_tool_permission(tool_name: str, parameters: Dict[str, Any]) -> bool:
     elif tool_name == "read_file":
         filepath = parameters.get("filepath", "")
         print(f"File: {filepath}")
+    elif tool_name == "list_dir":
+        directory_path = parameters.get("directory_path", "")
+        print(f"Directory: {directory_path}")
+    elif tool_name == "delete_file":
+        filepath = parameters.get("filepath", "")
+        print(f"File: {filepath}")
+        print("This will permanently delete the file.")
     elif tool_name == "edit_file":
         filepath = parameters.get("filepath", "")
         content = parameters.get("content", "")
@@ -203,7 +300,11 @@ def execute_tool(tool_name: str, parameters: Dict[str, Any], config: Optional[Co
         return execute_bash(parameters.get("command", ""))
     elif tool_name == "edit_file":
         return edit_file(parameters.get("filepath", ""), parameters.get("content", ""))
+    elif tool_name == "delete_file":
+        return delete_file(parameters.get("filepath", ""))
     elif tool_name == "read_file":
         return read_file(parameters.get("filepath", ""))
+    elif tool_name == "list_dir":
+        return list_dir(parameters.get("directory_path", ""))
     else:
         return f"Unknown tool: {tool_name}"
