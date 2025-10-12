@@ -4,12 +4,19 @@ from typing import Optional
 import anthropic
 from .tools import TOOLS, execute_tool
 from utils.config import Config
+from utils.rules import get_rules_text, has_rules
 from utils.token_counter import count_conversation_tokens, display_token_usage, estimate_cost
 
 # Load system prompt at module level
 script_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') as f:
-    system_prompt = f.read().strip()
+    base_system_prompt = f.read().strip()
+
+# Append user-defined rules if they exist
+if has_rules():
+    system_prompt = base_system_prompt + "\n\n" + get_rules_text()
+else:
+    system_prompt = base_system_prompt
 
 ContextWindowLimit = 200000
 

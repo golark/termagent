@@ -25,6 +25,16 @@ from .permissions import (
     PermissionsManager
 )
 
+from .rules import (
+    add_rule,
+    remove_rule,
+    list_rules,
+    get_rules_text,
+    has_rules,
+    get_rules_manager,
+    RulesManager
+)
+
 __all__ = [
     # Debug functions
     'dbg',
@@ -45,5 +55,14 @@ __all__ = [
     'request_write_access',
     'has_write_access',
     'get_permissions_manager',
-    'PermissionsManager'
+    'PermissionsManager',
+    
+    # Rules functions
+    'add_rule',
+    'remove_rule',
+    'list_rules',
+    'get_rules_text',
+    'has_rules',
+    'get_rules_manager',
+    'RulesManager'
 ]
