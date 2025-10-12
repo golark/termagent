@@ -18,6 +18,13 @@ from .config import (
     AutonomyLevel
 )
 
+from .permissions import (
+    request_write_access,
+    has_write_access,
+    get_permissions_manager,
+    PermissionsManager
+)
+
 __all__ = [
     # Debug functions
     'dbg',
@@ -32,5 +39,11 @@ __all__ = [
     
     # Config classes
     'Config',
-    'AutonomyLevel'
+    'AutonomyLevel',
+    
+    # Permissions functions
+    'request_write_access',
+    'has_write_access',
+    'get_permissions_manager',
+    'PermissionsManager'
 ]

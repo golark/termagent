@@ -4,6 +4,7 @@ import subprocess
 import os
 from typing import Dict, Any, Optional
 from utils.config import Config, AutonomyLevel
+from utils.permissions import request_write_access
 
 
 # Define available tools
@@ -121,6 +122,10 @@ def read_file(filepath: str) -> str:
 def edit_file(filepath: str, content: str) -> str:
     """Write content to a file"""
     try:
+        # Check write permissions first
+        if not request_write_access(filepath):
+            return f"Error: Write permission denied for '{filepath}'"
+        
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
         return f"Successfully wrote {len(content)} characters to '{filepath}'"
@@ -175,6 +180,10 @@ def delete_file(filepath: str) -> str:
         
         if os.path.isdir(filepath):
             return f"Error: '{filepath}' is a directory, not a file"
+        
+        # Check write permissions first
+        if not request_write_access(filepath):
+            return f"Error: Write permission denied for '{filepath}'"
         
         os.remove(filepath)
         return f"Successfully deleted file '{filepath}'"
