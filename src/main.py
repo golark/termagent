@@ -4,7 +4,6 @@ from typing import Dict
 from utils.debug import dbg_messages
 from utils.config import Config
 from utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache, should_replay
-from utils.rules import add_rule, remove_rule, list_rules
 
 
 def process_command(command: str, aliases: Dict[str, str], config: Config) -> str:
@@ -12,43 +11,6 @@ def process_command(command: str, aliases: Dict[str, str], config: Config) -> st
 
     if command.lower() == "config":
         config.display()
-        return ""
-    
-    # Handle rules commands
-    if command.lower() == "rules":
-        rules = list_rules()
-        if not rules:
-            print("No rules defined. Use 'rule add <text>' to add a rule.")
-        else:
-            print("\n📋 User-Defined Rules:")
-            for rule in rules:
-                if rule.get('description'):
-                    print(f"  {rule['id']}. {rule['rule']} ({rule['description']})")
-                else:
-                    print(f"  {rule['id']}. {rule['rule']}")
-            print()
-        return ""
-    
-    if command.lower().startswith("rule add "):
-        rule_text = command[9:].strip()
-        if rule_text:
-            rule_id = add_rule(rule_text)
-            print(f"✓ Added rule #{rule_id}: {rule_text}")
-            print("⚠️  Restart TermAgent for rules to take effect.")
-        else:
-            print("Error: Please provide rule text. Usage: rule add <text>")
-        return ""
-    
-    if command.lower().startswith("rule remove "):
-        try:
-            rule_id = int(command[12:].strip())
-            if remove_rule(rule_id):
-                print(f"✓ Removed rule #{rule_id}")
-                print("⚠️  Restart TermAgent for rules to take effect.")
-            else:
-                print(f"Error: Rule #{rule_id} not found")
-        except ValueError:
-            print("Error: Please provide a valid rule ID. Usage: rule remove <id>")
         return ""
 
     if is_shell_command(command):

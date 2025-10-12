@@ -5,6 +5,7 @@ import os
 from typing import Dict, Any, Optional
 from utils.config import Config, AutonomyLevel
 from utils.permissions import request_write_access
+from utils.rules import add_rule, remove_rule, list_rules as get_rules_list
 
 
 # Define available tools
@@ -81,6 +82,33 @@ TOOLS = [
                 }
             },
             "required": ["filepath"]
+        }
+    },
+    {
+        "name": "rules",
+        "description": "Manage user-defined rules and guidelines. Rules are appended to the system prompt and persist across sessions. Changes require restart to take effect.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action to perform: 'list', 'add', or 'remove'",
+                    "enum": ["list", "add", "remove"]
+                },
+                "rule": {
+                    "type": "string",
+                    "description": "The rule text to add (required for 'add' action)"
+                },
+                "rule_id": {
+                    "type": "integer",
+                    "description": "The rule ID to remove (required for 'remove' action)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional description for the rule (used with 'add' action)"
+                }
+            },
+            "required": ["action"]
         }
     }
 ]
@@ -194,6 +222,49 @@ def delete_file(filepath: str) -> str:
         return f"Error deleting file: {str(e)}"
 
 
+def manage_rules(action: str, rule: str = None, rule_id: int = None, description: str = None) -> str:
+    """Manage user-defined rules"""
+    try:
+        if action == "list":
+            rules = get_rules_list()
+            if not rules:
+                return "No rules defined."
+            
+            result = "User-Defined Rules:\n"
+            for r in rules:
+                if r.get('description'):
+                    result += f"  {r['id']}. {r['rule']} ({r['description']})\n"
+                else:
+                    result += f"  {r['id']}. {r['rule']}\n"
+            return result.strip()
+        
+        elif action == "add":
+            if not rule:
+                return "Error: 'rule' parameter is required for 'add' action"
+            
+            new_rule_id = add_rule(rule, description)
+            msg = f"Successfully added rule #{new_rule_id}: {rule}"
+            msg += "\nNote: Restart TermAgent for rules to take effect in the system prompt."
+            return msg
+        
+        elif action == "remove":
+            if rule_id is None:
+                return "Error: 'rule_id' parameter is required for 'remove' action"
+            
+            if remove_rule(rule_id):
+                msg = f"Successfully removed rule #{rule_id}"
+                msg += "\nNote: Restart TermAgent for changes to take effect in the system prompt."
+                return msg
+            else:
+                return f"Error: Rule #{rule_id} not found"
+        
+        else:
+            return f"Error: Invalid action '{action}'. Must be 'list', 'add', or 'remove'"
+            
+    except Exception as e:
+        return f"Error managing rules: {str(e)}"
+
+
 def requires_permission(tool_name: str, parameters: Dict[str, Any] = None) -> bool:
 
     if tool_name == "edit_file":
@@ -203,6 +274,8 @@ def requires_permission(tool_name: str, parameters: Dict[str, Any] = None) -> bo
     elif tool_name == "read_file":
         return False
     elif tool_name == "list_dir":
+        return False
+    elif tool_name == "rules":
         return False
     elif tool_name == "bash":
         if parameters:
@@ -315,5 +388,12 @@ def execute_tool(tool_name: str, parameters: Dict[str, Any], config: Optional[Co
         return read_file(parameters.get("filepath", ""))
     elif tool_name == "list_dir":
         return list_dir(parameters.get("directory_path", ""))
+    elif tool_name == "rules":
+        return manage_rules(
+            parameters.get("action", ""),
+            parameters.get("rule"),
+            parameters.get("rule_id"),
+            parameters.get("description")
+        )
     else:
         return f"Unknown tool: {tool_name}"
