@@ -3,9 +3,9 @@
 import subprocess
 import os
 from typing import Dict, Any, Optional
-from utils.config import Config, AutonomyLevel
-from utils.permissions import request_write_access
-from utils.rules import add_rule, remove_rule, list_rules as get_rules_list
+from src.utils.config import Config, AutonomyLevel
+from src.utils.permissions import request_write_access
+from src.utils.rules import add_rule, remove_rule, list_rules as get_rules_list
 
 
 # Define available tools
