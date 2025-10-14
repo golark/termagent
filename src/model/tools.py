@@ -243,18 +243,14 @@ def manage_rules(action: str, rule: str = None, rule_id: int = None, description
                 return "Error: 'rule' parameter is required for 'add' action"
             
             new_rule_id = add_rule(rule, description)
-            msg = f"Successfully added rule #{new_rule_id}: {rule}"
-            msg += "\nNote: Restart TermAgent for rules to take effect in the system prompt."
-            return msg
+            return f"Successfully added rule #{new_rule_id}: {rule}"
         
         elif action == "remove":
             if rule_id is None:
                 return "Error: 'rule_id' parameter is required for 'remove' action"
             
             if remove_rule(rule_id):
-                msg = f"Successfully removed rule #{rule_id}"
-                msg += "\nNote: Restart TermAgent for changes to take effect in the system prompt."
-                return msg
+                return f"Successfully removed rule #{rule_id}"
             else:
                 return f"Error: Rule #{rule_id} not found"
         

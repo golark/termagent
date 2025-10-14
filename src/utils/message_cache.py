@@ -113,4 +113,17 @@ def should_replay(command: str) -> bool:
             return False
 
     i, k = tool_use_idx
-    return messages[i]['content'][k]['input']['command']
+    content = messages[i]['content'][k]
+    
+    # Handle both serialized dict and Anthropic API objects
+    if hasattr(content, 'input'):
+        # Anthropic API object (ToolUseBlock)
+        tool_input = content.input
+    elif isinstance(content, dict):
+        # Serialized content
+        tool_input = content.get('input', {})
+    else:
+        return None
+    
+    # Return command if it exists (for bash tool)
+    return tool_input.get('command') if tool_input else None

@@ -7,18 +7,18 @@ from utils.config import Config
 from utils.rules import get_rules_text, has_rules
 from utils.token_counter import count_conversation_tokens, display_token_usage, estimate_cost
 
-# Load system prompt at module level
+# Load base system prompt at module level
 script_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(script_dir, 'system_prompt.txt'), 'r', encoding='utf-8') as f:
     base_system_prompt = f.read().strip()
 
-# Append user-defined rules if they exist
-if has_rules():
-    system_prompt = base_system_prompt + "\n\n" + get_rules_text()
-else:
-    system_prompt = base_system_prompt
-
 ContextWindowLimit = 200000
+
+def get_system_prompt() -> str:
+    """Get system prompt with dynamically loaded rules."""
+    if has_rules():
+        return base_system_prompt + "\n\n" + get_rules_text()
+    return base_system_prompt
 
 class ContextWindowExceededError(Exception):
     """Raised when message exceeds the context window limit."""
@@ -47,6 +47,9 @@ def call_anthropic(message: str, api_key: Optional[str] = None, config: Optional
         
         # Use config's model if available, otherwise use default
         model_name = config.model if config else "claude-3-5-sonnet-20241022"
+        
+        # Get system prompt with current rules
+        system_prompt = get_system_prompt()
         
         # Count input tokens before API call
         input_messages = [{"role": "user", "content": message}]
