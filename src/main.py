@@ -1,6 +1,9 @@
+import argparse
+from typing import Dict
+
+from src import __version__
 from src.model import call_anthropic, ContextWindowExceededError
 from src.shell import is_shell_command, execute_shell_command, get_shell_aliases, resolve_alias, setup_readline, save_command_history, add_to_history, get_input
-from typing import Dict
 from src.utils.debug import dbg_messages
 from src.utils.config import Config
 from src.utils.message_cache import add_to_message_cache, initialize_messages, dump_message_cache, should_replay
@@ -36,6 +39,18 @@ def process_command(command: str, aliases: Dict[str, str], config: Config) -> st
 
 
 def main():
+    """Main entry point for TermAgent."""
+    parser = argparse.ArgumentParser(
+        prog="termagent",
+        description="An AI-powered terminal assistant"
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}"
+    )
+    parser.parse_args()
+    
     config = Config.from_file()
     initialize_messages()
     setup_readline()
